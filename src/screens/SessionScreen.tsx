@@ -1,0 +1,1261 @@
+/**
+ * SessionScreen — Active workout session UI (Redesigned)
+ *
+ * Route: app/(tabs)/training/session/[instanceId]/[sessionNumber].tsx
+ */
+
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import {
+  View,
+  ScrollView,
+  Pressable,
+  StyleSheet,
+  StyleProp,
+  ViewStyle,
+  Image,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  withTiming,
+  FadeIn,
+  FadeInDown,
+} from "react-native-reanimated";
+import * as Haptics from "expo-haptics";
+import {
+  SkipBack,
+  SkipForward,
+  Check,
+  Volume2,
+  Maximize,
+  MoreVertical,
+  Play,
+  Pause,
+  Square,
+  ChevronRight,
+  Clock,
+  Layers,
+  SlidersHorizontal,
+} from "lucide-react-native";
+
+import { useAppTheme } from "../theme/ThemeContext";
+import { useResponsive } from "../hooks/useResponsive";
+import { SPText } from "../components/ui/SPText";
+import { SPIcon } from "../components/icons/SPIcon";
+import { fonts } from "../theme";
+
+import { PauseExitSheet } from "../components/session/PauseExitSheet";
+
+import { useSessionTimer } from "../hooks/useSessionTimer";
+import { useRestTimer } from "../hooks/useRestTimer";
+import { useSessionState } from "../hooks/useSessionState";
+
+import type { SessionScreenProps } from "../types/session";
+import type { IconName } from "../components/icons/SPIcon";
+
+// ─── Theme ────────────────────────────────────────────────────────────────────
+
+const darkTheme = {
+  bg: "#0C0E10",
+  surface: "#13171A",
+  surface2: "#1A1F23",
+  border: "rgba(255,255,255,0.07)",
+  text: "#F0EDE4",
+  muted: "#6B6B62",
+  muted2: "#9A9A90",
+  accent: "#C8F135",
+  accentDim: "rgba(200,241,53,0.10)",
+  void: "#0A0A0A",
+  raised: "#1E1E1E",
+};
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type ProgressionType = "VOLUME" | "LOAD" | "DENSITY";
+
+interface ProgressionContext {
+  week: number;
+  progressionType: ProgressionType;
+  weeklyChange: string | null;
+}
+
+interface SessionScreenPropsWithProgression extends SessionScreenProps {
+  progressionContext?: ProgressionContext | null;
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function formatLevel(level: string) {
+  return level.charAt(0) + level.slice(1).toLowerCase();
+}
+
+function pad(n: number) {
+  return String(n).padStart(2, "0");
+}
+
+const MUSCLE_ICON_MAP: Record<string, IconName> = {
+  UPPER: "muscleUpper",
+  LOWER: "muscleLower",
+  CORE: "muscleCore",
+  FULLBODY: "muscleFullbody",
+  Chest: "muscleUpper",
+  Shoulders: "muscleUpper",
+  Triceps: "muscleUpper",
+  Biceps: "muscleUpper",
+  Back: "muscleUpper",
+  "Upper Back": "muscleUpper",
+  "Lower Back": "muscleCore",
+  Lats: "muscleUpper",
+  Traps: "muscleUpper",
+  Forearms: "muscleUpper",
+  Quads: "muscleLower",
+  Hamstrings: "muscleLower",
+  Glutes: "muscleLower",
+  Calves: "muscleLower",
+  "Hip Flexors": "muscleLower",
+  Adductors: "muscleLower",
+  Abductors: "muscleLower",
+  Abs: "muscleCore",
+  Obliques: "muscleCore",
+  Core: "muscleCore",
+  "Full Body": "muscleFullbody",
+  Cardio: "muscleFullbody",
+};
+
+function muscleToIcon(muscles: string[] | undefined): IconName {
+  if (!muscles || muscles.length === 0) return "training";
+  return MUSCLE_ICON_MAP[muscles[0]] ?? "training";
+}
+
+// ─── PressableScale ───────────────────────────────────────────────────────────
+
+function PressableScale({
+  onPress,
+  disabled,
+  style,
+  children,
+}: {
+  onPress?: () => void;
+  disabled?: boolean;
+  style?: StyleProp<ViewStyle>;
+  children: React.ReactNode;
+}) {
+  const scale = useSharedValue(1);
+  const aStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+  const spring = { damping: 18, stiffness: 260, mass: 0.8 };
+
+  return (
+    <Animated.View style={[aStyle, style]}>
+      <Pressable
+        onPress={onPress}
+        onPressIn={() => {
+          if (!onPress || disabled) return;
+          scale.value = withSpring(0.93, spring);
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        }}
+        onPressOut={() => {
+          scale.value = withSpring(1, spring);
+        }}
+        disabled={disabled}
+      >
+        {children}
+      </Pressable>
+    </Animated.View>
+  );
+}
+
+// ─── ProgressHeader ───────────────────────────────────────────────────────────
+
+function ProgressHeader({
+  current,
+  total,
+  accentColor,
+}: {
+  current: number;
+  total: number;
+  accentColor: string;
+}) {
+  const progress = total > 0 ? current / total : 0;
+  const fillWidth = useSharedValue(0);
+
+  useEffect(() => {
+    fillWidth.value = withTiming(progress, { duration: 400 });
+  }, [progress]);
+
+  const fillStyle = useAnimatedStyle(() => ({
+    width: `${fillWidth.value * 100}%` as `${number}%`,
+  }));
+
+  return (
+    <Animated.View entering={FadeIn.duration(300)} style={s.progressHeader}>
+      <View style={[s.progressTrack, { backgroundColor: darkTheme.border }]}>
+        <Animated.View
+          style={[s.progressFill, fillStyle, { backgroundColor: accentColor }]}
+        />
+      </View>
+      <SPText style={[s.progressCount, { color: darkTheme.muted2 }]}>
+        {current} / {total}
+      </SPText>
+    </Animated.View>
+  );
+}
+
+// ─── ExerciseHeader ───────────────────────────────────────────────────────────
+
+function ExerciseHeader({
+  level,
+  focus,
+  exerciseName,
+  muscles,
+  accentColor,
+  rs,
+}: {
+  level: string;
+  focus: string;
+  exerciseName: string;
+  muscles: string[];
+  accentColor: string;
+  rs: (...args: number[]) => number;
+}) {
+  return (
+    <Animated.View
+      entering={FadeInDown.duration(260).delay(40)}
+      style={s.exerciseHeader}
+    >
+      <View style={s.exerciseHeaderTop}>
+        <View style={{ flex: 1 }}>
+          <SPText style={[s.exerciseMeta, { color: accentColor }]}>
+            {level.toUpperCase()} · {focus.toUpperCase()}
+          </SPText>
+          <SPText
+            style={[
+              s.exerciseTitle,
+              { color: darkTheme.text, fontSize: rs(24, 26, 30) },
+            ]}
+            numberOfLines={2}
+          >
+            {exerciseName}
+          </SPText>
+        </View>
+        <View
+          style={[
+            s.exerciseIconBox,
+            {
+              backgroundColor: darkTheme.surface2,
+              borderColor: darkTheme.border,
+            },
+          ]}
+        >
+          <SlidersHorizontal
+            size={rs(20, 22)}
+            color={accentColor}
+            strokeWidth={1.8}
+          />
+        </View>
+      </View>
+
+      {/* Muscle pills */}
+      {muscles.length > 0 && (
+        <View style={s.musclePillRow}>
+          {muscles.slice(0, 3).map((m) => (
+            <View
+              key={m}
+              style={[
+                s.musclePill,
+                {
+                  backgroundColor: accentColor + "22",
+                  borderColor: accentColor + "44",
+                },
+              ]}
+            >
+              <SPText style={[s.musclePillText, { color: accentColor }]}>
+                {m.toUpperCase()}
+              </SPText>
+            </View>
+          ))}
+        </View>
+      )}
+    </Animated.View>
+  );
+}
+
+// ─── VideoPlayerCard ──────────────────────────────────────────────────────────
+
+function VideoPlayerCard({
+  videoProgress = 0.2,
+  currentTime = "0:07",
+  duration = "0:35",
+  rs,
+}: {
+  videoProgress?: number;
+  currentTime?: string;
+  duration?: string;
+  rs: (...args: number[]) => number;
+}) {
+  const [playing, setPlaying] = useState(false);
+
+  return (
+    <Animated.View
+      entering={FadeInDown.duration(260).delay(60)}
+      style={s.videoCard}
+    >
+      {/* Thumbnail area */}
+      <View style={s.videoThumb}>
+        {/* Dark placeholder — swap for real Video component */}
+        <View style={s.videoThumbInner} />
+
+        {/* Top-right overflow menu */}
+        <View style={s.videoTopBar}>
+          <Pressable style={s.videoMenuBtn} hitSlop={8}>
+            <MoreVertical size={18} color="#fff" strokeWidth={2} />
+          </Pressable>
+        </View>
+
+        {/* Centre play button */}
+        <PressableScale onPress={() => setPlaying((p) => !p)}>
+          <View style={s.videoPlayBtn}>
+            {playing ? (
+              <Pause size={28} color="#fff" fill="#fff" strokeWidth={0} />
+            ) : (
+              <Play size={28} color="#fff" fill="#fff" strokeWidth={0} />
+            )}
+          </View>
+        </PressableScale>
+
+        {/* Bottom gradient overlay */}
+        <View style={s.videoGradient} pointerEvents="none" />
+
+        {/* Bottom controls */}
+        <View style={s.videoControls}>
+          <SPText style={s.videoTime}>{currentTime}</SPText>
+
+          {/* Timeline */}
+          <View style={s.videoTimeline}>
+            <View
+              style={[
+                s.videoTimelineTrack,
+                { backgroundColor: "rgba(255,255,255,0.25)" },
+              ]}
+            >
+              <View
+                style={[
+                  s.videoTimelineFill,
+                  {
+                    width: `${videoProgress * 100}%` as `${number}%`,
+                    backgroundColor: "#ef4444",
+                  },
+                ]}
+              />
+              {/* Scrubber dot */}
+              <View
+                style={[
+                  s.videoScrubber,
+                  {
+                    left: `${videoProgress * 100}%` as `${number}%`,
+                    backgroundColor: "#ef4444",
+                  },
+                ]}
+              />
+            </View>
+          </View>
+
+          <SPText style={s.videoTime}>{duration}</SPText>
+
+          <Pressable hitSlop={8}>
+            <Volume2
+              size={16}
+              color="rgba(255,255,255,0.8)"
+              strokeWidth={1.8}
+            />
+          </Pressable>
+
+          <Pressable hitSlop={8}>
+            <Maximize
+              size={16}
+              color="rgba(255,255,255,0.8)"
+              strokeWidth={1.8}
+            />
+          </Pressable>
+        </View>
+      </View>
+    </Animated.View>
+  );
+}
+
+// ─── MetricsCard ─────────────────────────────────────────────────────────────
+
+function MetricsCard({
+  workoutTime,
+  completedSets,
+  totalSets,
+  accentColor,
+  rs,
+}: {
+  workoutTime: string;
+  completedSets: number;
+  totalSets: number;
+  accentColor: string;
+  rs: (...args: number[]) => number;
+}) {
+  return (
+    <Animated.View entering={FadeInDown.duration(260).delay(80)}>
+      <View
+        style={[
+          s.metricsCard,
+          { backgroundColor: darkTheme.surface, borderColor: darkTheme.border },
+        ]}
+      >
+        {/* TIME */}
+        <View style={s.metricItem}>
+          <View style={s.metricIconRow}>
+            <Clock
+              size={rs(14, 16)}
+              color={darkTheme.muted2}
+              strokeWidth={1.8}
+            />
+          </View>
+          <SPText
+            style={[
+              s.metricValue,
+              { color: darkTheme.text, fontSize: rs(26, 28) },
+            ]}
+          >
+            {workoutTime}
+          </SPText>
+          <SPText style={[s.metricLabel, { color: darkTheme.muted }]}>
+            TIME
+          </SPText>
+        </View>
+
+        <View
+          style={[s.metricDivider, { backgroundColor: darkTheme.border }]}
+        />
+
+        {/* SETS */}
+        <View style={s.metricItem}>
+          <View style={s.metricIconRow}>
+            <Layers size={rs(14, 16)} color={accentColor} strokeWidth={1.8} />
+          </View>
+          <SPText
+            style={[
+              s.metricValue,
+              { color: darkTheme.text, fontSize: rs(26, 28) },
+            ]}
+          >
+            {completedSets} / {totalSets}
+          </SPText>
+          <SPText style={[s.metricLabel, { color: darkTheme.muted }]}>
+            SETS
+          </SPText>
+        </View>
+      </View>
+    </Animated.View>
+  );
+}
+
+// ─── UpNextCard ───────────────────────────────────────────────────────────────
+
+function UpNextCard({
+  exerciseName,
+  equipment,
+  accentColor,
+  rs,
+}: {
+  exerciseName: string;
+  equipment?: string;
+  accentColor: string;
+  rs: (...args: number[]) => number;
+}) {
+  return (
+    <Animated.View entering={FadeInDown.duration(260).delay(100)}>
+      <View
+        style={[
+          s.upNextCard,
+          { backgroundColor: darkTheme.surface, borderColor: darkTheme.border },
+        ]}
+      >
+        {/* Thumbnail */}
+        <View style={[s.upNextThumb, { backgroundColor: darkTheme.raised }]} />
+
+        {/* Info */}
+        <View style={s.upNextInfo}>
+          <SPText style={[s.upNextLabel, { color: darkTheme.muted2 }]}>
+            UP NEXT
+          </SPText>
+          <SPText
+            style={[
+              s.upNextName,
+              { color: darkTheme.text, fontSize: rs(17, 19) },
+            ]}
+            numberOfLines={1}
+          >
+            {exerciseName}
+          </SPText>
+          {equipment && (
+            <SPText style={[s.upNextEquipment, { color: darkTheme.muted }]}>
+              {equipment}
+            </SPText>
+          )}
+          <View style={[s.upNextAccent, { backgroundColor: accentColor }]} />
+        </View>
+
+        {/* Arrow */}
+        <ChevronRight size={20} color={darkTheme.muted2} strokeWidth={1.8} />
+      </View>
+    </Animated.View>
+  );
+}
+
+// ─── ActionControls ───────────────────────────────────────────────────────────
+
+function ActionControls({
+  onBack,
+  onComplete,
+  onNext,
+  disabled,
+  accentColor,
+  phase,
+  resting,
+  rs,
+}: {
+  onBack?: () => void;
+  onComplete?: () => void;
+  onNext?: () => void;
+  disabled?: boolean;
+  accentColor: string;
+  phase: string;
+  resting: boolean;
+  rs: (...args: number[]) => number;
+}) {
+  const completeIcon =
+    phase === "paused" ? (
+      <Play size={rs(26, 28)} color="#000" fill="#000" strokeWidth={0} />
+    ) : resting ? (
+      <SkipForward size={rs(26, 28)} color="#000" fill="#000" strokeWidth={0} />
+    ) : (
+      <Check size={rs(26, 28)} color="#000" strokeWidth={2.5} />
+    );
+
+  return (
+    <Animated.View
+      entering={FadeInDown.duration(260).delay(140)}
+      style={[s.actionControls, { borderTopColor: darkTheme.border }]}
+    >
+      {/* Back */}
+      <PressableScale onPress={onBack} style={s.actionSideBtn}>
+        <View
+          style={[
+            s.actionSecBtn,
+            {
+              backgroundColor: darkTheme.surface2,
+              borderColor: darkTheme.border,
+            },
+          ]}
+        >
+          <SkipBack
+            size={rs(18, 20)}
+            color={darkTheme.text}
+            strokeWidth={1.8}
+          />
+        </View>
+        <SPText style={[s.actionBtnLabel, { color: darkTheme.muted }]}>
+          BACK
+        </SPText>
+      </PressableScale>
+
+      {/* Complete */}
+      <View style={s.actionCenter}>
+        <PressableScale onPress={onComplete} disabled={disabled}>
+          <View style={[s.actionPrimaryBtn, { backgroundColor: accentColor }]}>
+            {completeIcon}
+          </View>
+        </PressableScale>
+        <SPText
+          style={[
+            s.actionBtnLabel,
+            { color: darkTheme.text, fontFamily: fonts.brandBold },
+          ]}
+        >
+          COMPLETE
+        </SPText>
+      </View>
+
+      {/* Next */}
+      <PressableScale onPress={onNext} style={s.actionSideBtn}>
+        <View
+          style={[
+            s.actionSecBtn,
+            {
+              backgroundColor: darkTheme.surface2,
+              borderColor: darkTheme.border,
+            },
+          ]}
+        >
+          <SkipForward
+            size={rs(18, 20)}
+            color={darkTheme.text}
+            strokeWidth={1.8}
+          />
+        </View>
+        <SPText style={[s.actionBtnLabel, { color: darkTheme.muted }]}>
+          NEXT
+        </SPText>
+      </PressableScale>
+    </Animated.View>
+  );
+}
+
+// ─── WorkoutFooter ────────────────────────────────────────────────────────────
+
+function WorkoutFooter({
+  workoutTime,
+  restTime,
+  resting,
+  phase,
+  accentColor,
+  onPauseResume,
+  onEnd,
+  rs,
+}: {
+  workoutTime: string;
+  restTime: string;
+  resting: boolean;
+  phase: string;
+  accentColor: string;
+  onPauseResume: () => void;
+  onEnd: () => void;
+  rs: (...args: number[]) => number;
+}) {
+  return (
+    <Animated.View
+      entering={FadeInDown.duration(260).delay(180)}
+      style={[
+        s.footer,
+        { borderTopColor: darkTheme.border, backgroundColor: darkTheme.bg },
+      ]}
+    >
+      {/* Workout timer */}
+      <View style={s.footerTimer}>
+        <SPText
+          style={[
+            s.footerTimerValue,
+            { color: darkTheme.text, fontSize: rs(22, 24) },
+          ]}
+        >
+          {workoutTime}
+        </SPText>
+        <SPText style={[s.footerTimerLabel, { color: darkTheme.muted }]}>
+          WORKOUT
+        </SPText>
+      </View>
+
+      {/* Pause / End */}
+      <View style={s.footerCenter}>
+        <Pressable onPress={onPauseResume} style={s.footerAction}>
+          {phase === "paused" ? (
+            <Play
+              size={12}
+              color={darkTheme.muted2}
+              fill={darkTheme.muted2}
+              strokeWidth={0}
+            />
+          ) : (
+            <View style={s.pauseIconRow}>
+              <View
+                style={[s.pauseBar, { backgroundColor: darkTheme.muted2 }]}
+              />
+              <View
+                style={[s.pauseBar, { backgroundColor: darkTheme.muted2 }]}
+              />
+            </View>
+          )}
+          <SPText style={[s.footerActionLabel, { color: darkTheme.muted2 }]}>
+            {phase === "paused" ? "RESUME" : "PAUSE"}
+          </SPText>
+        </Pressable>
+
+        <Pressable onPress={onEnd} style={s.footerAction}>
+          <View style={[s.stopIcon, { borderColor: "#ef4444" }]} />
+          <SPText style={[s.footerActionLabel, { color: "#ef4444" }]}>
+            END
+          </SPText>
+        </Pressable>
+      </View>
+
+      {/* Rest timer */}
+      <View style={[s.footerTimer, { alignItems: "flex-end" }]}>
+        <SPText
+          style={[
+            s.footerTimerValue,
+            {
+              color: resting ? accentColor : darkTheme.text,
+              fontSize: rs(22, 24),
+            },
+          ]}
+        >
+          {restTime}
+        </SPText>
+        <SPText style={[s.footerTimerLabel, { color: darkTheme.muted }]}>
+          REST
+        </SPText>
+      </View>
+    </Animated.View>
+  );
+}
+
+// ─── SessionScreen ────────────────────────────────────────────────────────────
+
+export default function SessionScreen({
+  instanceId,
+  dayNumber,
+  planName,
+  focus,
+  level,
+  muscleGroup,
+  exercises,
+  draft,
+  progressionContext,
+}: SessionScreenPropsWithProgression) {
+  const router = useRouter();
+  const { theme, isDark } = useAppTheme();
+  const { rs } = useResponsive();
+
+  const levelLabel = formatLevel(level);
+  const accentColor = isDark ? darkTheme.accent : "#5C8A00";
+
+  // ─── Exercise navigation ──────────────────────────────────────────────────
+
+  const [currentExIdx, setCurrentExIdx] = useState(0);
+  const total = exercises.length;
+  const currentExView = exercises[currentExIdx] ?? null;
+  const nextExView = exercises[currentExIdx + 1] ?? null;
+
+  // ─── Session hooks ────────────────────────────────────────────────────────
+
+  const timer = useSessionTimer(draft?.elapsedSeconds ?? 0);
+  const restTimer = useRestTimer();
+
+  const secondsRef = useRef(timer.seconds);
+  useEffect(() => {
+    secondsRef.current = timer.seconds;
+  }, [timer.seconds]);
+  const getSeconds = useCallback(() => secondsRef.current, []);
+
+  const onSessionEnd = useCallback(() => {
+    router.replace("/(tabs)/training");
+  }, [router]);
+
+  const session = useSessionState({
+    instanceId,
+    dayNumber,
+    exercises,
+    draft,
+    startRest: restTimer.startRest,
+    getSeconds,
+    onSessionEnd,
+  });
+
+  useEffect(() => {
+    session.initWeights();
+  }, [instanceId]);
+
+  useEffect(() => {
+    if (!restTimer.resting && session.phase === "resting") {
+      session.onRestEnd();
+    }
+  }, [restTimer.resting, session.phase, session.onRestEnd]);
+
+  useEffect(() => {
+    if (
+      session.currentExerciseIdx !== undefined &&
+      session.currentExerciseIdx !== currentExIdx
+    ) {
+      setCurrentExIdx(session.currentExerciseIdx);
+    }
+  }, [session.currentExerciseIdx]);
+
+  // ─── Pause / exit ──────────────────────────────────────────────────────────
+
+  const showSheet = session.phase === "paused";
+
+  const handleOpenSheet = useCallback(() => {
+    timer.pause();
+    session.setPaused(true);
+  }, [timer, session]);
+
+  const handleResume = useCallback(() => {
+    session.setPaused(false);
+    timer.resume();
+  }, [timer, session]);
+
+  const handleSaveDraftAndLeave = useCallback(async () => {
+    await session.persistDraft();
+    router.replace("/(tabs)/training");
+  }, [session, router]);
+
+  const handleEndAndSave = useCallback(() => {
+    session.handleEndSession(false);
+  }, [session]);
+
+  // ─── Derived display values ────────────────────────────────────────────────
+
+  const workoutTime = `${timer.mins}:${timer.secs}`;
+  const restTime = restTimer.resting
+    ? `${pad(restTimer.restMins)}:${pad(restTimer.restSecs)}`
+    : "00:00";
+
+  const completedSetsForCurrent = session.completedSets ?? 0;
+  const totalSetsForCurrent =
+    session.currentExercise?.sets ?? currentExView?.sets ?? 0;
+
+  const currentMuscles: string[] = currentExView?.exercise.musclesWorked ?? [
+    muscleGroup,
+  ];
+
+  const completeHandler =
+    session.phase === "paused"
+      ? handleResume
+      : restTimer.resting
+        ? restTimer.skipRest
+        : session.currentExercise
+          ? session.handleCompleteSet
+          : undefined;
+
+  // ─── Render ────────────────────────────────────────────────────────────────
+
+  return (
+    <SafeAreaView
+      style={[s.safe, { backgroundColor: darkTheme.bg }]}
+      edges={["top", "bottom"]}
+    >
+      <ScrollView
+        style={s.scroll}
+        contentContainerStyle={[
+          s.content,
+          { paddingHorizontal: rs(16, 20, 24) },
+        ]}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        {/* 1 — Progress Header */}
+        <ProgressHeader
+          current={currentExIdx + 1}
+          total={total}
+          accentColor={accentColor}
+        />
+
+        {/* 2 — Exercise Header */}
+        {currentExView && (
+          <ExerciseHeader
+            level={levelLabel}
+            focus={focus}
+            exerciseName={currentExView.exercise.name}
+            muscles={currentMuscles}
+            accentColor={accentColor}
+            rs={rs}
+          />
+        )}
+
+        {/* 3 — Video Player */}
+        <VideoPlayerCard
+          videoProgress={0.2}
+          currentTime={`0:${timer.secs}`}
+          duration="0:35"
+          rs={rs}
+        />
+
+        {/* 4 — Metrics */}
+        <MetricsCard
+          workoutTime={workoutTime}
+          completedSets={completedSetsForCurrent}
+          totalSets={totalSetsForCurrent}
+          accentColor={accentColor}
+          rs={rs}
+        />
+
+        {/* 5 — Up Next */}
+        {nextExView && (
+          <UpNextCard
+            exerciseName={nextExView.exercise.name}
+            equipment={nextExView.exercise.equipment?.name ?? undefined}
+            accentColor={accentColor}
+            rs={rs}
+          />
+        )}
+
+        {/* 6 — Action Controls */}
+        <ActionControls
+          onBack={() => setCurrentExIdx((i) => Math.max(0, i - 1))}
+          onComplete={completeHandler}
+          onNext={() => setCurrentExIdx((i) => Math.min(total - 1, i + 1))}
+          disabled={session.phase === "ending"}
+          accentColor={accentColor}
+          phase={session.phase}
+          resting={restTimer.resting}
+          rs={rs}
+        />
+
+        {/* 7 — Workout Footer */}
+        <WorkoutFooter
+          workoutTime={workoutTime}
+          restTime={restTime}
+          resting={restTimer.resting}
+          phase={session.phase}
+          accentColor={accentColor}
+          onPauseResume={handleOpenSheet}
+          onEnd={() => session.handleEndSession(false)}
+          rs={rs}
+        />
+
+        <View style={{ height: 16 }} />
+      </ScrollView>
+
+      {/* Pause / Exit Sheet */}
+      {showSheet && (
+        <PauseExitSheet
+          visible={showSheet}
+          onResume={handleResume}
+          onSaveDraftAndLeave={handleSaveDraftAndLeave}
+          onEndAndSave={handleEndAndSave}
+        />
+      )}
+    </SafeAreaView>
+  );
+}
+
+// Styles
+
+const s = StyleSheet.create({
+  safe: { flex: 1 },
+  scroll: { flex: 1 },
+  content: {
+    paddingTop: 16,
+    gap: 14,
+    paddingBottom: 32,
+  },
+
+  // ── Progress Header ──
+  progressHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    marginBottom: 4,
+  },
+  progressTrack: {
+    flex: 1,
+    height: 3,
+    borderRadius: 2,
+    overflow: "hidden",
+  },
+  progressFill: {
+    height: "100%",
+    borderRadius: 2,
+  },
+  progressCount: {
+    fontSize: 13,
+    fontFamily: fonts.brandMedium,
+    letterSpacing: 0.4,
+    minWidth: 32,
+    textAlign: "right",
+  },
+
+  // ── Exercise Header ──
+  exerciseHeader: {
+    gap: 12,
+  },
+  exerciseHeaderTop: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+  },
+  exerciseMeta: {
+    fontSize: 11,
+    fontFamily: fonts.brandSemiBold,
+    letterSpacing: 1.2,
+    marginBottom: 6,
+  },
+  exerciseTitle: {
+    fontFamily: fonts.brandBold,
+    lineHeight: 32,
+  },
+  exerciseIconBox: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 18,
+  },
+  musclePillRow: {
+    flexDirection: "row",
+    gap: 6,
+    flexWrap: "wrap",
+  },
+  musclePill: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  musclePillText: {
+    fontSize: 9,
+    fontFamily: fonts.brandSemiBold,
+    letterSpacing: 0.8,
+  },
+
+  // ── Video Card ──
+  videoCard: {
+    borderRadius: 20,
+    overflow: "hidden",
+    backgroundColor: "#0d0d0d",
+  },
+  videoThumb: {
+    width: "100%",
+    aspectRatio: 16 / 9,
+    position: "relative",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  videoThumbInner: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "#111416",
+  },
+  videoTopBar: {
+    position: "absolute",
+    top: 10,
+    right: 10,
+    zIndex: 10,
+  },
+  videoMenuBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  videoPlayBtn: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  videoGradient: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 72,
+    backgroundColor: "rgba(0,0,0,0.6)",
+  },
+  videoControls: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    gap: 8,
+  },
+  videoTime: {
+    color: "rgba(255,255,255,0.85)",
+    fontSize: 12,
+    fontFamily: fonts.brandMedium,
+  },
+  videoTimeline: {
+    flex: 1,
+    height: 20,
+    justifyContent: "center",
+  },
+  videoTimelineTrack: {
+    height: 3,
+    borderRadius: 2,
+    overflow: "visible",
+    position: "relative",
+  },
+  videoTimelineFill: {
+    height: "100%",
+    borderRadius: 2,
+  },
+  videoScrubber: {
+    position: "absolute",
+    top: -5,
+    width: 13,
+    height: 13,
+    borderRadius: 7,
+    marginLeft: -6,
+  },
+
+  // ── Metrics Card ──
+  metricsCard: {
+    flexDirection: "row",
+    borderRadius: 18,
+    borderWidth: 1,
+    overflow: "hidden",
+  },
+  metricItem: {
+    flex: 1,
+    alignItems: "center",
+    paddingVertical: 18,
+    gap: 4,
+  },
+  metricIconRow: {
+    marginBottom: 2,
+  },
+  metricValue: {
+    fontFamily: fonts.brandBold,
+    letterSpacing: -0.5,
+  },
+  metricLabel: {
+    fontSize: 9,
+    fontFamily: fonts.brandSemiBold,
+    letterSpacing: 1.2,
+  },
+  metricDivider: {
+    width: 1,
+    marginVertical: 16,
+  },
+
+  // ── Up Next ──
+  upNextCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 20,
+    borderWidth: 1,
+    overflow: "hidden",
+    paddingRight: 16,
+    gap: 0,
+  },
+  upNextThumb: {
+    width: 110,
+    height: 90,
+  },
+  upNextInfo: {
+    flex: 1,
+    paddingLeft: 16,
+    paddingVertical: 16,
+    gap: 3,
+  },
+  upNextLabel: {
+    fontSize: 10,
+    fontFamily: fonts.brandSemiBold,
+    letterSpacing: 1.2,
+  },
+  upNextName: {
+    fontFamily: fonts.brandBold,
+    lineHeight: 24,
+  },
+  upNextEquipment: {
+    fontSize: 13,
+    fontFamily: fonts.brandMedium,
+  },
+  upNextAccent: {
+    width: 36,
+    height: 3,
+    borderRadius: 2,
+    marginTop: 8,
+  },
+
+  // ── Action Controls ──
+  actionControls: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingTop: 20,
+    paddingBottom: 8,
+    borderTopWidth: 1,
+  },
+  actionSideBtn: {
+    flex: 1,
+    alignItems: "center",
+    gap: 8,
+  },
+  actionSecBtn: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  actionCenter: {
+    alignItems: "center",
+    gap: 8,
+  },
+  actionPrimaryBtn: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  actionBtnLabel: {
+    fontSize: 10,
+    fontFamily: fonts.brandSemiBold,
+    letterSpacing: 1.2,
+  },
+
+  // ── Footer ──
+  footer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingTop: 18,
+    paddingBottom: 6,
+    borderTopWidth: 1,
+  },
+  footerTimer: {
+    alignItems: "flex-start",
+    gap: 4,
+    flex: 1,
+  },
+  footerTimerValue: {
+    fontFamily: fonts.brandBold,
+    letterSpacing: -0.5,
+  },
+  footerTimerLabel: {
+    fontSize: 9,
+    fontFamily: fonts.brandSemiBold,
+    letterSpacing: 1.2,
+  },
+  footerCenter: {
+    alignItems: "center",
+    gap: 10,
+    flex: 1,
+  },
+  footerAction: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  footerActionLabel: {
+    fontSize: 12,
+    fontFamily: fonts.brandSemiBold,
+    letterSpacing: 0.8,
+  },
+  pauseIconRow: {
+    flexDirection: "row",
+    gap: 3,
+  },
+  pauseBar: {
+    width: 3,
+    height: 12,
+    borderRadius: 2,
+  },
+  stopIcon: {
+    width: 12,
+    height: 12,
+    borderRadius: 2,
+    borderWidth: 2,
+  },
+});

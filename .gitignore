@@ -1,4 +1,4 @@
-# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+
 
 # dependencies
 node_modules/
@@ -39,3 +39,22 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Add to sporty-pulse-expo/.gitignore
+android/local.properties
+android/app/debug.keystore
+android/app/release.keystore
+android/.gradle
+*.jks
+*.keystore
+
+
+node_modules/
+.expo/
+.env
+.env.local
+android/local.properties
+android/app/debug.keystore
+android/app/release.keystore
+*.keystore
+*.jks

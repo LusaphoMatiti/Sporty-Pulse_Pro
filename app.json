@@ -1,30 +1,102 @@
 {
   "expo": {
-    "name": "sporty-pulse-expo",
-    "slug": "sporty-pulse-expo",
+    "name": "Sporty Pulse Pro",
+    "slug": "sporty-pulse-pro",
+    "scheme": "sportypulsepro",
     "version": "1.0.0",
+    "runtimeVersion": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
     "newArchEnabled": true,
+    "icon": "./assets/icon.png",
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
-    },
-    "ios": {
-      "supportsTablet": true
+      "backgroundColor": "#0C0E10"
     },
     "android": {
+      "package": "com.sportypulsepro.app",
+      "versionCode": 1,
+      "minSdkVersion": 24,
+      "compileSdkVersion": 35,
+      "targetSdkVersion": 35,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#0C0E10"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.VIBRATE",
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.INTERNET",
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.RECORD_AUDIO"
+      ],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "sportypulsepro"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ]
+    },
+    "ios": {
+      "bundleIdentifier": "com.sportypulsepro.app",
+      "buildNumber": "1",
+      "supportsTablet": false,
+      "infoPlist": {
+        "NSCameraUsageDescription": "Sporty Pulse Pro uses your camera to take a profile picture.",
+        "NSPhotoLibraryUsageDescription": "Sporty Pulse Pro accesses your photo library so you can choose a profile picture.",
+        "NSPhotoLibraryAddUsageDescription": "Sporty Pulse Pro saves images to your photo library.",
+        "UIBackgroundModes": [
+          "fetch",
+          "remote-notification"
+        ]
+      }
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-secure-store",
+      "expo-font",
+      [
+        "expo-router",
+        {
+          "root": "src/app"
+        }
+      ],
+      "expo-web-browser",
+      "expo-updates",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Sporty Pulse Pro accesses your photos to let you set a profile picture.",
+          "cameraPermission": "Sporty Pulse Pro uses your camera to take a profile picture."
+        }
+      ]
+    ],
+    "extra": {
+      "router": {
+        "root": "src/app"
+      },
+      "eas": {
+        "projectId": "e037b91a-d732-406e-87d8-09df017e69a6"
+      }
     }
   }
 }
