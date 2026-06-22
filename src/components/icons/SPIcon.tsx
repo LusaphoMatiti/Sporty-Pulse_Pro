@@ -83,7 +83,15 @@ export type IconName =
   // ── Recovery status icons ─────────────────────────────────────────────────
   | "recoveryFresh" // green bolt circle  → FRESH
   | "recoveryModerate" // amber gauge    → MODERATE
-  | "recoveryFatigue"; // red pulse      → HIGH_FATIGUE
+  | "recoveryFatigue" // red pulse      → HIGH_FATIGUE
+  // ── Settings screen icons ─────────────────────────────────────────────────
+  | "bell" // push notifications
+  | "sliders" // training system
+  | "pulse" // edit profile (waveform pulse)
+  | "shieldCheck" // privacy policy
+  | "fileText" // terms & conditions
+  | "logOut" // sign out
+  | "crown"; // upgrade to pro
 
 // ─── Platform maps ────────────────────────────────────────────────────────────
 
@@ -142,6 +150,14 @@ const sfSymbolMap: Record<IconName, string> = {
   recoveryFresh: "bolt.circle.fill",
   recoveryModerate: "gauge.medium",
   recoveryFatigue: "waveform.path.ecg.rectangle.fill",
+  // settings screen
+  bell: "bell.fill",
+  sliders: "slider.horizontal.3",
+  pulse: "waveform.path.ecg",
+  shieldCheck: "checkmark.shield.fill",
+  fileText: "doc.text.fill",
+  logOut: "rectangle.portrait.and.arrow.right",
+  crown: "crown.fill",
 };
 
 // Android: Phosphor icon component names
@@ -199,6 +215,14 @@ const phosphorMap: Record<IconName, string> = {
   recoveryFresh: "Lightning",
   recoveryModerate: "Gauge",
   recoveryFatigue: "Heartbeat",
+  // settings screen
+  bell: "Bell",
+  sliders: "Sliders",
+  pulse: "Pulse",
+  shieldCheck: "ShieldCheck",
+  fileText: "FileText",
+  logOut: "SignOut",
+  crown: "Crown",
 };
 
 // ─── Props ────────────────────────────────────────────────────────────────────
@@ -720,6 +744,73 @@ function FallbackIcon({
           />
           {/* downward accent arrow indicating drop */}
           <Path {...p} d="M18 15l2 3-2 0" strokeWidth={1.4} />
+        </Svg>
+      );
+
+    // ── Settings screen icons ─────────────────────────────────────────────────
+
+    case "bell":
+      return (
+        <Svg {...s} viewBox="0 0 24 24">
+          <Path {...p} d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+          <Path {...p} d="M13.73 21a2 2 0 01-3.46 0" />
+        </Svg>
+      );
+    case "sliders":
+      return (
+        <Svg {...s} viewBox="0 0 24 24">
+          <Line {...p} x1="4" y1="6" x2="20" y2="6" />
+          <Line {...p} x1="4" y1="12" x2="20" y2="12" />
+          <Line {...p} x1="4" y1="18" x2="20" y2="18" />
+          <Circle {...p} fill={color} cx="9" cy="6" r="2" />
+          <Circle {...p} fill={color} cx="16" cy="12" r="2" />
+          <Circle {...p} fill={color} cx="10" cy="18" r="2" />
+        </Svg>
+      );
+    case "pulse":
+      return (
+        <Svg {...s} viewBox="0 0 24 24">
+          <Polyline {...p} points="2 12 6 12 9 5 13 19 16 12 22 12" />
+        </Svg>
+      );
+    case "shieldCheck":
+      return (
+        <Svg {...s} viewBox="0 0 24 24">
+          <Path
+            {...p}
+            d="M12 2l8 3v6c0 5-3.5 8.5-8 11-4.5-2.5-8-6-8-11V5l8-3z"
+          />
+          <Path {...p} d="M9 12l2 2 4-4" />
+        </Svg>
+      );
+    case "fileText":
+      return (
+        <Svg {...s} viewBox="0 0 24 24">
+          <Path
+            {...p}
+            d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"
+          />
+          <Path {...p} d="M14 2v6h6" />
+          <Line {...p} x1="8" y1="13" x2="16" y2="13" />
+          <Line {...p} x1="8" y1="17" x2="16" y2="17" />
+        </Svg>
+      );
+    case "logOut":
+      return (
+        <Svg {...s} viewBox="0 0 24 24">
+          <Path {...p} d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />
+          <Polyline {...p} points="16 17 21 12 16 7" />
+          <Line {...p} x1="21" y1="12" x2="9" y2="12" />
+        </Svg>
+      );
+    case "crown":
+      return (
+        <Svg {...s} viewBox="0 0 24 24">
+          <Path
+            {...p}
+            fill={color}
+            d="M3 18l-1.2-9.6a.8.8 0 011.3-.7L7 11l3.9-6.5a1.2 1.2 0 012.2 0L17 11l3.9-3.3a.8.8 0 011.3.7L21 18H3z"
+          />
         </Svg>
       );
     default:

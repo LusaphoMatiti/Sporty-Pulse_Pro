@@ -35,6 +35,8 @@ export interface AppTheme {
   accentDim: string;
   void: string;
   raised: string;
+  danger: string;
+  dangerDim: string;
 }
 
 // ─── Token sets ────────────────────────────────────────────────────────────────
@@ -52,6 +54,8 @@ export const darkTheme: AppTheme = {
   accentDim: "rgba(200,241,53,0.10)",
   void: "#0A0A0A",
   raised: "#1E1E1E",
+  danger: "#FF6B5E",
+  dangerDim: "rgba(255,107,94,0.10)",
 };
 
 export const lightTheme: AppTheme = {
@@ -66,6 +70,8 @@ export const lightTheme: AppTheme = {
   accentDim: "rgba(92,138,0,0.10)",
   void: "#F0F2F5",
   raised: "#E8EAED",
+  danger: "#D9483B",
+  dangerDim: "rgba(217,72,59,0.08)",
 };
 
 export type ThemeMode = "light" | "dark";

@@ -22,13 +22,11 @@ import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withSpring,
-  withTiming,
   FadeIn,
 } from "react-native-reanimated";
 
 import { SPText } from "../components/ui";
 import { SPButton } from "../components/ui";
-import { SPBadge } from "../components/ui";
 import { api, clearSessionToken } from "../lib/api";
 import { useAppTheme } from "../theme/ThemeContext";
 import { SPIcon } from "../components/icons/SPIcon";
@@ -38,6 +36,7 @@ import { fonts } from "../theme";
 import type { SPUser, UserLevel } from "../types/session";
 
 // ─── Design Tokens ────────────────────────────────────────────────────────────
+// Premium membership spec: luxury, calm, minimal, structured.
 
 const D = {
   space: {
@@ -49,21 +48,23 @@ const D = {
     major: 48,
   },
   radius: {
-    sm: 8,
-    md: 12,
-    lg: 16,
+    sm: 12,
+    md: 18,
+    lg: 22, // row-style cards (Training System)
+    xl: 26, // grouped cards (Preferences / More)
+    xxl: 28, // hero card (Profile)
     full: 9999,
   },
   type: {
-    h1: { fontSize: 30, lineHeight: 36, fontWeight: "700" as const },
+    h1: { fontSize: 32, lineHeight: 38, fontWeight: "700" as const },
     h2: { fontSize: 22, lineHeight: 28, fontWeight: "600" as const },
     body: { fontSize: 16, lineHeight: 22, fontWeight: "400" as const },
-    subtext: { fontSize: 14, lineHeight: 20, fontWeight: "500" as const },
+    subtext: { fontSize: 15, lineHeight: 20, fontWeight: "500" as const },
     caption: { fontSize: 12, lineHeight: 16, fontWeight: "400" as const },
   },
-  button: { height: 52, borderRadius: 14 },
+  button: { height: 64, borderRadius: 20 },
   input: { height: 50, borderRadius: 12 },
-  row: { height: 52 },
+  row: { height: 72 },
   spring: { damping: 18, stiffness: 260, mass: 0.8 },
 } as const;
 
@@ -79,12 +80,6 @@ interface SettingsData {
 }
 
 // ─── Identity config ──────────────────────────────────────────────────────────
-
-const IDENTITY_COLOR: Record<Identity, string> = {
-  REBUILD: "#FF9500",
-  OPERATOR: "#30D158",
-  EXECUTIVE_PERFORMANCE: "#BF5AF2",
-};
 
 const IDENTITY_LABEL: Record<Identity, string> = {
   REBUILD: "Rebuild",
@@ -140,22 +135,131 @@ function PressableScale({
   );
 }
 
-// ─── SettingRow ───────────────────────────────────────────────────────────────
+// ─── PremiumSwitch (iOS-style toggle, accent on, surface2 off) ───────────────
 
-function SettingRow({
+function PremiumSwitch({
+  value,
+  onChange,
+}: {
+  value: boolean;
+  onChange: (next: boolean) => void;
+}) {
+  const { theme } = useAppTheme();
+  const translateX = useSharedValue(value ? 20 : 0);
+
+  useEffect(() => {
+    translateX.value = withSpring(value ? 20 : 0, D.spring);
+  }, [value]);
+
+  const thumbStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: translateX.value }],
+  }));
+
+  return (
+    <Pressable
+      onPress={() => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        onChange(!value);
+      }}
+      style={[
+        switchStyles.track,
+        { backgroundColor: value ? theme.accent : theme.surface2 },
+      ]}
+      accessibilityRole="switch"
+      accessibilityState={{ checked: value }}
+    >
+      <Animated.View
+        style={[
+          switchStyles.thumb,
+          thumbStyle,
+          { backgroundColor: value ? theme.bg : "#FFFFFF" },
+        ]}
+      />
+    </Pressable>
+  );
+}
+
+const switchStyles = StyleSheet.create({
+  track: {
+    width: 50,
+    height: 30,
+    borderRadius: D.radius.full,
+    justifyContent: "center",
+    paddingHorizontal: 4,
+  },
+  thumb: {
+    width: 22,
+    height: 22,
+    borderRadius: D.radius.full,
+  },
+});
+
+// ─── SectionLabel ─────────────────────────────────────────────────────────────
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  const { theme } = useAppTheme();
+  return (
+    <SPText
+      style={[
+        D.type.caption,
+        {
+          color: theme.muted,
+          fontFamily: fonts.brandMedium,
+          letterSpacing: 1.2,
+          textTransform: "uppercase",
+          paddingHorizontal: D.space.micro,
+        },
+      ]}
+    >
+      {children}
+    </SPText>
+  );
+}
+
+// ─── GroupedCard (rows with dividers, used for Preferences / More) ───────────
+
+function GroupedCard({ children }: { children: React.ReactNode }) {
+  const { theme } = useAppTheme();
+  return (
+    <View
+      style={[
+        cardStyles.groupedCard,
+        { backgroundColor: theme.surface, borderColor: theme.border },
+      ]}
+    >
+      {children}
+    </View>
+  );
+}
+
+const cardStyles = StyleSheet.create({
+  groupedCard: {
+    borderRadius: D.radius.xl,
+    borderWidth: 1,
+    overflow: "hidden",
+  },
+});
+
+// ─── Row (generic settings row, icon + label + right content) ───────────────
+
+function Row({
+  icon,
   label,
   value,
   danger,
   rightEl,
   onPress,
   last,
+  minHeight = D.row.height,
 }: {
+  icon?: React.ReactNode;
   label: string;
   value?: string;
   danger?: boolean;
   rightEl?: React.ReactNode;
   onPress?: () => void;
   last?: boolean;
+  minHeight?: number;
 }) {
   const { theme } = useAppTheme();
   const scale = useSharedValue(1);
@@ -163,7 +267,7 @@ function SettingRow({
     transform: [{ scale: scale.value }],
   }));
 
-  const labelColor = danger ? "#FF453A" : theme.text;
+  const labelColor = danger ? theme.danger : theme.text;
 
   return (
     <Animated.View style={aStyle}>
@@ -171,7 +275,7 @@ function SettingRow({
         onPress={onPress}
         onPressIn={() => {
           if (!onPress) return;
-          scale.value = withSpring(0.98, D.spring);
+          scale.value = withSpring(0.985, D.spring);
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         }}
         onPressOut={() => {
@@ -180,9 +284,11 @@ function SettingRow({
         disabled={!onPress}
         style={[
           rowStyles.row,
+          { minHeight },
           !last && { borderBottomWidth: 1, borderBottomColor: theme.border },
         ]}
       >
+        {icon ? <View style={rowStyles.iconSlot}>{icon}</View> : null}
         <SPText
           style={[
             D.type.subtext,
@@ -193,13 +299,17 @@ function SettingRow({
         </SPText>
         <View style={rowStyles.right}>
           {value && (
-            <SPText style={[D.type.caption, { color: theme.muted }]}>
+            <SPText style={[D.type.subtext, { color: theme.muted2 }]}>
               {value}
             </SPText>
           )}
           {rightEl ??
             (onPress ? (
-              <SPIcon name="forward" size={16} color={theme.muted} />
+              <SPIcon
+                name="forward"
+                size={18}
+                color={danger ? theme.danger : theme.muted}
+              />
             ) : null)}
         </View>
       </Pressable>
@@ -212,8 +322,13 @@ const rowStyles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    minHeight: D.row.height,
-    paddingHorizontal: D.space.std,
+    paddingHorizontal: D.space.section,
+    gap: D.space.std,
+  },
+  iconSlot: {
+    width: 24,
+    alignItems: "center",
+    justifyContent: "center",
   },
   right: {
     flexDirection: "row",
@@ -222,110 +337,9 @@ const rowStyles = StyleSheet.create({
   },
 });
 
-// ─── SectionCard ──────────────────────────────────────────────────────────────
-
-function SectionCard({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
-  const { theme } = useAppTheme();
-
-  return (
-    <View style={{ gap: D.space.tight }}>
-      <SPText
-        style={[
-          D.type.caption,
-          {
-            color: theme.muted,
-            fontFamily: fonts.brandMedium,
-            letterSpacing: 1,
-            textTransform: "uppercase",
-            paddingHorizontal: D.space.micro,
-          },
-        ]}
-      >
-        {title}
-      </SPText>
-      <View
-        style={[
-          cardStyles.card,
-          { backgroundColor: theme.surface, borderColor: theme.border },
-        ]}
-      >
-        {children}
-      </View>
-    </View>
-  );
-}
-
-const cardStyles = StyleSheet.create({
-  card: {
-    borderRadius: D.radius.lg,
-    borderWidth: 1,
-    overflow: "hidden",
-  },
-});
-
-// ─── ThemeToggle ──────────────────────────────────────────────────────────────
-
-function ThemeToggle() {
-  const { isDark, toggleTheme, theme } = useAppTheme();
-  const translateX = useSharedValue(isDark ? 20 : 0);
-
-  useEffect(() => {
-    translateX.value = withSpring(isDark ? 20 : 0, D.spring);
-  }, [isDark]);
-
-  const thumbStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: translateX.value }],
-  }));
-
-  return (
-    <Pressable
-      onPress={() => {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        toggleTheme();
-      }}
-      style={[
-        toggleStyles.track,
-        { backgroundColor: isDark ? theme.accent : theme.surface2 },
-      ]}
-      accessibilityRole="switch"
-      accessibilityState={{ checked: isDark }}
-      accessibilityLabel="Toggle dark mode"
-    >
-      <Animated.View
-        style={[
-          toggleStyles.thumb,
-          thumbStyle,
-          { backgroundColor: isDark ? theme.bg : theme.muted },
-        ]}
-      />
-    </Pressable>
-  );
-}
-
-const toggleStyles = StyleSheet.create({
-  track: {
-    width: 44,
-    height: 26,
-    borderRadius: D.radius.full,
-    justifyContent: "center",
-    paddingHorizontal: D.space.micro,
-  },
-  thumb: {
-    width: 18,
-    height: 18,
-    borderRadius: D.radius.full,
-  },
-});
-
 // ─── Avatar ───────────────────────────────────────────────────────────────────
 
-function Avatar({ user, size = 60 }: { user: SPUser; size?: number }) {
+function Avatar({ user, size = 56 }: { user: SPUser; size?: number }) {
   const { theme } = useAppTheme();
   const r = size / 2;
 
@@ -350,9 +364,9 @@ function Avatar({ user, size = 60 }: { user: SPUser; size?: number }) {
         width: size,
         height: size,
         borderRadius: r,
-        backgroundColor: theme.accentDim,
+        backgroundColor: theme.surface2,
         borderWidth: 1,
-        borderColor: theme.accent + "40",
+        borderColor: theme.border,
         alignItems: "center",
         justifyContent: "center",
       }}
@@ -360,9 +374,9 @@ function Avatar({ user, size = 60 }: { user: SPUser; size?: number }) {
       <SPText
         style={{
           fontFamily: fonts.brandBold,
-          fontSize: size * 0.38,
+          fontSize: size * 0.36,
           color: theme.accent,
-          lineHeight: size * 0.45,
+          lineHeight: size * 0.42,
         }}
       >
         {user.name?.charAt(0).toUpperCase() ?? "?"}
@@ -686,7 +700,7 @@ function EditProfileSheet({
                   style={[
                     D.type.caption,
                     {
-                      color: "#FF453A",
+                      color: theme.danger,
                       textAlign: "center",
                       marginBottom: D.space.std,
                     },
@@ -716,8 +730,8 @@ const sheetStyles = StyleSheet.create({
     justifyContent: "flex-end",
   },
   sheet: {
-    borderTopLeftRadius: D.radius.lg * 2,
-    borderTopRightRadius: D.radius.lg * 2,
+    borderTopLeftRadius: D.radius.xxl,
+    borderTopRightRadius: D.radius.xxl,
     borderTopWidth: 1,
     borderLeftWidth: 1,
     borderRightWidth: 1,
@@ -781,7 +795,7 @@ const sheetStyles = StyleSheet.create({
     fontSize: D.type.body.fontSize,
   },
   levelCard: {
-    borderRadius: D.radius.md,
+    borderRadius: D.radius.sm,
     borderWidth: 1,
     padding: D.space.std,
     gap: D.space.micro,
@@ -791,50 +805,67 @@ const sheetStyles = StyleSheet.create({
 // ─── SettingsSkeleton ─────────────────────────────────────────────────────────
 
 function SettingsSkeleton() {
-  const { theme } = useAppTheme();
   const insets = useSafeAreaInsets();
+  const { theme } = useAppTheme();
 
   return (
     <ScrollView
       style={{ flex: 1 }}
       contentContainerStyle={[
         mainStyles.content,
-        { paddingTop: insets.top + D.space.std },
+        { paddingTop: insets.top + D.space.large },
       ]}
       scrollEnabled={false}
       showsVerticalScrollIndicator={false}
     >
-      <View style={{ gap: D.space.tight }}>
-        <SPSkeleton width={60} height={11} />
-        <SPSkeleton width={140} height={32} radius={D.radius.sm} />
-      </View>
-
       <View
         style={[
           mainStyles.profileCard,
           { backgroundColor: theme.surface, borderColor: theme.border },
         ]}
       >
-        <SPSkeleton width={60} height={60} radius={30} />
+        <SPSkeleton width={56} height={56} radius={28} />
         <View style={{ flex: 1, gap: D.space.tight }}>
-          <SPSkeleton width="50%" height={14} />
-          <SPSkeleton width="30%" height={11} />
+          <SPSkeleton width="55%" height={16} />
+          <SPSkeleton width="40%" height={12} />
         </View>
-        <SPSkeleton width={52} height={24} radius={D.radius.full} />
+        <SPSkeleton width={18} height={18} radius={4} />
+      </View>
+
+      <View
+        style={[
+          cardStyles.groupedCard,
+          { backgroundColor: theme.surface, borderColor: theme.border },
+        ]}
+      >
+        {[0, 1].map((i) => (
+          <View
+            key={i}
+            style={[
+              rowStyles.row,
+              { minHeight: D.row.height },
+              i === 0 && {
+                borderBottomWidth: 1,
+                borderBottomColor: theme.border,
+              },
+            ]}
+          >
+            <SPSkeleton width={24} height={24} radius={6} />
+            <SPSkeleton width="45%" height={14} />
+          </View>
+        ))}
       </View>
 
       {[
-        ["Account", 1],
-        ["Training", 1],
         ["Preferences", 2],
-        ["Subscription", 2],
+        ["Subscription", 1],
         ["More", 3],
       ].map(([title, count]) => (
         <View key={title as string} style={{ gap: D.space.tight }}>
           <SPSkeleton width={80} height={11} />
           <View
             style={[
-              cardStyles.card,
+              cardStyles.groupedCard,
               { backgroundColor: theme.surface, borderColor: theme.border },
             ]}
           >
@@ -843,6 +874,7 @@ function SettingsSkeleton() {
                 key={i}
                 style={[
                   rowStyles.row,
+                  { minHeight: D.row.height },
                   i < (count as number) - 1 && {
                     borderBottomWidth: 1,
                     borderBottomColor: theme.border,
@@ -850,7 +882,7 @@ function SettingsSkeleton() {
                 ]}
               >
                 <SPSkeleton width="45%" height={13} />
-                <SPSkeleton width={40} height={22} radius={D.radius.full} />
+                <SPSkeleton width={50} height={30} radius={D.radius.full} />
               </View>
             ))}
           </View>
@@ -865,7 +897,7 @@ function SettingsSkeleton() {
 export function SettingsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { theme, isDark } = useAppTheme();
+  const { theme, isDark, toggleTheme } = useAppTheme();
 
   const [data, setData] = useState<SettingsData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -933,7 +965,7 @@ export function SettingsScreen() {
         style={mainStyles.fill}
         contentContainerStyle={[
           mainStyles.content,
-          { paddingTop: insets.top + D.space.std },
+          { paddingTop: insets.top + D.space.large },
         ]}
         showsVerticalScrollIndicator={false}
         refreshControl={
@@ -945,7 +977,7 @@ export function SettingsScreen() {
           />
         }
       >
-        {/* ── Page Header ── */}
+        {/* ── Header (Account / Settings — left as-is) ── */}
         <Animated.View
           entering={FadeIn.duration(200)}
           style={{ gap: D.space.micro }}
@@ -966,7 +998,11 @@ export function SettingsScreen() {
           <SPText
             style={[
               D.type.h1,
-              { color: theme.text, fontFamily: fonts.brandBold },
+              {
+                color: theme.text,
+                fontFamily: fonts.brandBold,
+                letterSpacing: -0.5,
+              },
             ]}
           >
             Settings
@@ -982,194 +1018,206 @@ export function SettingsScreen() {
                 { backgroundColor: theme.surface, borderColor: theme.border },
               ]}
             >
-              <Avatar user={user} size={60} />
-              <View style={{ flex: 1, gap: D.space.micro }}>
+              <Avatar user={user} size={56} />
+              <View style={{ flex: 1, gap: 2 }}>
                 <SPText
                   style={[
                     D.type.body,
                     {
                       color: theme.text,
                       fontFamily: fonts.brandBold,
-                      fontSize: 17,
+                      fontSize: 18,
                     },
                   ]}
+                  numberOfLines={1}
                 >
                   {user.name ?? "Athlete"}
                 </SPText>
-                <SPText style={[D.type.caption, { color: theme.muted }]}>
-                  Tap to edit profile
+                <SPText
+                  style={[D.type.caption, { color: theme.muted2 }]}
+                  numberOfLines={1}
+                >
+                  {user.email ?? "Manage your account and preferences"}
                 </SPText>
               </View>
-              <SPBadge variant={isPro ? "acid" : "outline"}>
-                {isPro ? "Pro" : "Starter"}
-              </SPBadge>
+              <SPIcon name="forward" size={18} color={theme.muted} />
             </View>
           </PressableScale>
         </Animated.View>
 
-        {/* ── Account ── */}
+        {/* ── Edit Profile + Training System ── */}
         <Animated.View entering={FadeIn.duration(220).delay(80)}>
-          <SectionCard title="Account">
-            <SettingRow
+          <GroupedCard>
+            <Row
+              icon={<SPIcon name="pulse" size={20} color={theme.accent} />}
               label="Edit Profile"
               onPress={() => setEditSheetOpen(true)}
-              last
             />
-          </SectionCard>
-        </Animated.View>
-
-        {/* ── Training ── */}
-        <Animated.View entering={FadeIn.duration(220).delay(110)}>
-          <SectionCard title="Training">
-            <SettingRow
+            <Row
+              icon={<SPIcon name="sliders" size={20} color={theme.accent} />}
               label="Training System"
               onPress={() => router.push("/settings/identity" as any)}
               last
-              rightEl={
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: D.space.tight,
-                  }}
-                >
-                  {identity && (
-                    <View
-                      style={[
-                        mainStyles.identityDot,
-                        { backgroundColor: IDENTITY_COLOR[identity] },
-                      ]}
-                    />
-                  )}
-                  <SPText style={[D.type.caption, { color: theme.muted }]}>
-                    {identity ? IDENTITY_LABEL[identity] : "Not set"}
-                  </SPText>
-                  <SPIcon name="forward" size={16} color={theme.muted} />
-                </View>
-              }
+              value={identity ? IDENTITY_LABEL[identity] : undefined}
             />
-          </SectionCard>
+          </GroupedCard>
         </Animated.View>
 
         {/* ── Preferences ── */}
-        <Animated.View entering={FadeIn.duration(220).delay(120)}>
-          <SectionCard title="Preferences">
-            <SettingRow
+        <Animated.View
+          entering={FadeIn.duration(220).delay(120)}
+          style={{ gap: D.space.tight }}
+        >
+          <SectionLabel>Preferences</SectionLabel>
+          <GroupedCard>
+            <Row
+              icon={<SPIcon name="bell" size={20} color={theme.accent} />}
               label="Push Notifications"
               rightEl={
-                <Pressable
-                  onPress={() => {
-                    setNotifEnabled((v) => !v);
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  }}
-                  style={[
-                    mainStyles.pillTrack,
-                    {
-                      backgroundColor: notifEnabled
-                        ? theme.accent
-                        : theme.surface2,
-                    },
-                  ]}
-                  accessibilityRole="switch"
-                  accessibilityState={{ checked: notifEnabled }}
-                >
-                  <Animated.View
-                    style={[
-                      mainStyles.pillThumb,
-                      {
-                        backgroundColor: theme.bg,
-                        transform: [{ translateX: notifEnabled ? 20 : 0 }],
-                      },
-                    ]}
-                  />
-                </Pressable>
+                <PremiumSwitch
+                  value={notifEnabled}
+                  onChange={setNotifEnabled}
+                />
               }
             />
-            <SettingRow
+            <Row
+              icon={<SPIcon name="moon" size={20} color={theme.accent} />}
               label="Dark Mode"
               last
               rightEl={
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: D.space.tight,
-                  }}
-                >
-                  <SPIcon
-                    name={isDark ? "moon" : "sun"}
-                    size={14}
-                    color={isDark ? theme.accent : theme.muted}
-                  />
-                  <ThemeToggle />
-                </View>
+                <PremiumSwitch value={isDark} onChange={() => toggleTheme()} />
               }
             />
-          </SectionCard>
+          </GroupedCard>
         </Animated.View>
 
         {/* ── Subscription ── */}
-        <Animated.View entering={FadeIn.duration(220).delay(160)}>
-          <SectionCard title="Subscription">
-            <SettingRow
-              label="Current Plan"
-              value={isPro ? "Pro" : "Starter"}
-              rightEl={<View />}
-            />
+        <Animated.View
+          entering={FadeIn.duration(220).delay(160)}
+          style={{ gap: D.space.tight }}
+        >
+          <SectionLabel>Subscription</SectionLabel>
+          <View
+            style={[
+              cardStyles.groupedCard,
+              {
+                backgroundColor: theme.surface,
+                borderColor: theme.border,
+                padding: D.space.section,
+                gap: D.space.section,
+              },
+            ]}
+          >
+            <View style={mainStyles.planRow}>
+              <SPText
+                style={[
+                  D.type.subtext,
+                  { fontFamily: fonts.brandMedium, color: theme.text },
+                ]}
+              >
+                Current Plan
+              </SPText>
+              <SPText style={[D.type.subtext, { color: theme.muted2 }]}>
+                {isPro ? "Pro" : "Starter"}
+              </SPText>
+            </View>
+
             {isPro ? (
-              <SettingRow
-                label="Manage Subscription"
-                onPress={() => router.push("/pricing" as any)}
-                last
-              />
-            ) : (
-              <View style={{ padding: D.space.std }}>
-                <SPButton
-                  onPress={() => router.push("/pricing" as any)}
-                  variant="primary"
-                  fullWidth
+              <PressableScale onPress={() => router.push("/pricing" as any)}>
+                <View
+                  style={[
+                    mainStyles.upgradeBtn,
+                    { backgroundColor: theme.surface2 },
+                  ]}
                 >
-                  Upgrade to Pro
-                </SPButton>
-              </View>
+                  <SPText
+                    style={{
+                      fontFamily: fonts.brandBold,
+                      fontSize: 15,
+                      letterSpacing: 0.5,
+                      color: theme.text,
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    Manage Subscription
+                  </SPText>
+                </View>
+              </PressableScale>
+            ) : (
+              <PressableScale onPress={() => router.push("/pricing" as any)}>
+                <View
+                  style={[
+                    mainStyles.upgradeBtn,
+                    { backgroundColor: theme.accent },
+                  ]}
+                >
+                  <SPText
+                    style={{
+                      fontFamily: fonts.brandBold,
+                      fontSize: 15,
+                      letterSpacing: 0.5,
+                      color: theme.bg,
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    Upgrade to Pro
+                  </SPText>
+                  <SPIcon name="crown" size={18} color={theme.bg} />
+                </View>
+              </PressableScale>
             )}
-          </SectionCard>
+          </View>
         </Animated.View>
 
         {/* ── More ── */}
-        <Animated.View entering={FadeIn.duration(220).delay(200)}>
-          <SectionCard title="More">
-            <SettingRow
+        <Animated.View
+          entering={FadeIn.duration(220).delay(200)}
+          style={{ gap: D.space.tight }}
+        >
+          <SectionLabel>More</SectionLabel>
+          <GroupedCard>
+            <Row
+              icon={<SPIcon name="info" size={20} color={theme.accent} />}
               label="About Us"
               onPress={() => router.push("/about" as any)}
             />
-            <SettingRow
+            <Row
+              icon={
+                <SPIcon name="shieldCheck" size={20} color={theme.accent} />
+              }
               label="Privacy Policy"
               onPress={() => router.push("/privacy" as any)}
             />
-            <SettingRow
+            <Row
+              icon={<SPIcon name="fileText" size={20} color={theme.accent} />}
               label="Terms & Conditions"
               onPress={() => router.push("/terms" as any)}
               last
             />
-          </SectionCard>
+          </GroupedCard>
         </Animated.View>
 
         {/* ── Danger Zone ── */}
-        <Animated.View entering={FadeIn.duration(220).delay(240)}>
-          <SectionCard title="Danger Zone">
-            <SettingRow
+        <Animated.View
+          entering={FadeIn.duration(220).delay(240)}
+          style={{ gap: D.space.tight, marginTop: D.space.tight }}
+        >
+          <SectionLabel>Danger Zone</SectionLabel>
+          <GroupedCard>
+            <Row
+              icon={<SPIcon name="logOut" size={20} color={theme.danger} />}
               label="Sign Out"
               danger
               onPress={handleSignOut}
               last
-              rightEl={<SPIcon name="forward" size={16} color="#FF453A" />}
             />
-          </SectionCard>
+          </GroupedCard>
         </Animated.View>
 
-        {/* Bottom clearance for tab bar */}
-        <View style={{ height: D.space.major }} />
+        {/* Bottom clearance for tab bar — kept tight since _layout.tsx
+            already reserves a real row for SPTabBar; this is just a
+            small breathing-room gap above it, specific to this screen */}
+        <View style={{ height: D.space.std }} />
       </ScrollView>
 
       {editSheetOpen && (
@@ -1203,32 +1251,28 @@ export function SettingsScreen() {
 const mainStyles = StyleSheet.create({
   fill: { flex: 1 },
   content: {
-    paddingHorizontal: D.space.std,
+    paddingHorizontal: D.space.section,
     gap: D.space.section,
   },
   profileCard: {
     flexDirection: "row",
     alignItems: "center",
     gap: D.space.std,
-    borderRadius: D.radius.lg,
+    borderRadius: D.radius.xxl,
     borderWidth: 1,
-    padding: D.space.std,
+    padding: D.space.section,
   },
-  identityDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+  planRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
-  pillTrack: {
-    width: 44,
-    height: 26,
-    borderRadius: D.radius.full,
+  upgradeBtn: {
+    flexDirection: "row",
+    alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 4,
-  },
-  pillThumb: {
-    width: 18,
-    height: 18,
-    borderRadius: D.radius.full,
+    gap: D.space.tight,
+    height: D.button.height,
+    borderRadius: D.button.borderRadius,
   },
 });
