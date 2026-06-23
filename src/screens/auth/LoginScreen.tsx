@@ -241,13 +241,24 @@ export function LoginScreen() {
     setLoading(true);
     setError("");
     try {
-      const res = await api.post<{ token?: string; error?: string }>(
-        "/api/auth/mobile-signin",
-        { email, password },
-      );
-      if (res?.token) {
-        await storeSessionToken(res.token);
-        router.replace("/(tabs)" as any);
+      const res = await api.post<{
+        success?: boolean;
+        data?: { token?: string };
+        token?: string;
+        error?: string;
+      }>("/api/auth/mobile-signin", { email, password });
+
+      // mobile-signin responds via apiSuccess({ token }), which wraps the
+      // payload as { success: true, data: { token } } — not a flat
+      // { token } at the top level. Reading res.token directly always
+      // returned undefined here, even with correct credentials, which is
+      // why every login attempt fell through to "Invalid email or
+      // password" regardless of whether the password was right.
+      const token = res?.data?.token ?? res?.token;
+
+      if (token) {
+        await storeSessionToken(token);
+        router.replace("/welcome-back" as any);
       } else {
         setError(ERROR_MESSAGES.CredentialsSignin);
       }
