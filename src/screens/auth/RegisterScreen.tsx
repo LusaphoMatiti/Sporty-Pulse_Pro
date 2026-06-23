@@ -214,7 +214,7 @@ export function RegisterScreen() {
     setError("");
     try {
       const res = await api.post<{ token?: string; error?: string }>(
-        "/api/auth/mobile-register",
+        "/api/auth/register",
         { name, email, password },
       );
       if (res?.token) {
