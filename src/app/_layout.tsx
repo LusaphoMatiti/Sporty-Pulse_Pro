@@ -1,30 +1,97 @@
 import React, { useEffect, useState } from "react";
 import { View, StatusBar, Platform } from "react-native";
-import { Stack, useRouter, useNavigationContainerRef } from "expo-router";
+import { Stack, useRouter } from "expo-router";
+import * as Linking from "expo-linking";
+import { jwtDecode } from "jwt-decode";
 import { useFonts } from "expo-font";
 import * as SplashScreen from "expo-splash-screen";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { getSessionToken, clearSessionToken } from "../lib/api";
+import {
+  getSessionToken,
+  clearSessionToken,
+  storeSessionToken,
+} from "../lib/api";
 import { ThemeProvider, useAppTheme } from "../theme/ThemeContext";
 
 SplashScreen.preventAutoHideAsync();
+
+// ─── Auth deep link handling ────────────────────────────────────────────────
+//
+// +native-intent.tsx tells Expo Router NOT to automatically resolve
+// sporty-pulse-pro://auth links against the file-based route tree. Without
+// that, Router's own automatic deep-link resolution and auth.tsx's
+// useEffect were independently racing to land on /welcome, and Router's
+// pass would occasionally re-settle there a second/third time without the
+// firstName/email params attached. Now this is the ONE place that handles
+// that URL, on both cold launch (getInitialURL) and warm resume (the "url"
+// event) — so there's nothing left for it to race against.
+
+async function handleAuthDeepLink(
+  url: string,
+  router: ReturnType<typeof useRouter>,
+) {
+  const parsed = Linking.parse(url);
+  const params = parsed.queryParams ?? {};
+
+  const token = typeof params.token === "string" ? params.token : undefined;
+  const error = typeof params.error === "string" ? params.error : undefined;
+
+  if (error) {
+    router.replace({ pathname: "/(auth)/login", params: { error } } as any);
+    return;
+  }
+
+  if (!token) {
+    router.replace("/(auth)/login" as any);
+    return;
+  }
+
+  await storeSessionToken(token);
+
+  let firstName = "Athlete";
+  let email = "";
+  try {
+    const payload = jwtDecode<{ name?: string; email?: string }>(token);
+    firstName = payload.name?.split(" ")[0] ?? "Athlete";
+    email = payload.email ?? "";
+  } catch {
+    // Fall back to defaults — welcome screens still render fine.
+  }
+
+  const isNew = params.isNew === "true";
+  if (isNew) {
+    router.replace({ pathname: "/welcome", params: { firstName } } as any);
+  } else {
+    router.replace({
+      pathname: "/welcome-back",
+      params: { firstName, email },
+    } as any);
+  }
+}
 
 // ─── ThemedApp ────────────────────────────────────────────────────────────────
 // Receives the resolved auth state so it can redirect declaratively
 // *after* the Stack navigator is mounted — avoids the race condition where
 // router.replace() fires before the navigator tree exists.
+//
+// skipRedirect is true when this cold launch came in via the auth deep
+// link — in that case handleAuthDeepLink above already owns navigation,
+// and this effect must not also redirect based on the token state
+// checkAuth() read independently.
 
 interface ThemedAppProps {
   hasToken: boolean;
+  skipRedirect: boolean;
 }
 
-function ThemedApp({ hasToken }: ThemedAppProps) {
+function ThemedApp({ hasToken, skipRedirect }: ThemedAppProps) {
   const { theme, isDark } = useAppTheme();
   const router = useRouter();
 
-  // Wait one frame after mount before redirecting so the Stack is ready.
   useEffect(() => {
+    if (skipRedirect) return;
+
     const id = setTimeout(() => {
       if (hasToken) {
         router.replace("/(tabs)");
@@ -33,7 +100,7 @@ function ThemedApp({ hasToken }: ThemedAppProps) {
       }
     }, 0);
     return () => clearTimeout(id);
-  }, [hasToken]);
+  }, [hasToken, skipRedirect]);
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -68,6 +135,8 @@ function ThemedApp({ hasToken }: ThemedAppProps) {
 // ─── RootLayout ───────────────────────────────────────────────────────────────
 
 export default function RootLayout() {
+  const router = useRouter();
+
   const [fontsLoaded, fontError] = useFonts({
     "Barlow-Regular": require("../assets/fonts/Barlow-Regular.ttf"),
     "Barlow-Medium": require("../assets/fonts/Barlow-Medium.ttf"),
@@ -78,6 +147,32 @@ export default function RootLayout() {
 
   const [authChecked, setAuthChecked] = useState(false);
   const [hasToken, setHasToken] = useState<boolean | null>(null);
+
+  // True when this cold launch's URL is the auth callback — resolved once
+  // via getInitialURL, which reflects the URL that launched the process.
+  const [launchedViaAuthLink, setLaunchedViaAuthLink] = useState<
+    boolean | null
+  >(null);
+
+  // ── Own the auth deep link end-to-end: cold launch + warm resume ─────────
+  useEffect(() => {
+    Linking.getInitialURL().then((url) => {
+      const isAuthLink = !!url && url.includes("/auth");
+      setLaunchedViaAuthLink(isAuthLink);
+      if (isAuthLink && url) {
+        handleAuthDeepLink(url, router);
+      }
+    });
+
+    // Warm resume: app already running, OAuth callback arrives as an event
+    // instead of a fresh process launch.
+    const sub = Linking.addEventListener("url", (event) => {
+      if (event.url.includes("/auth")) {
+        handleAuthDeepLink(event.url, router);
+      }
+    });
+    return () => sub.remove();
+  }, []);
 
   // ── Step 1: check token ────────────────────────────────────────────────────
   useEffect(() => {
@@ -122,14 +217,13 @@ export default function RootLayout() {
   }, [fontsLoaded, fontError, authChecked]);
 
   // ── Step 3: block render until ready ──────────────────────────────────────
-  // NOTE: do NOT call router.replace() here — the navigator doesn't exist yet.
-  // ThemedApp handles the redirect in its own useEffect (after mount).
   if (!fontsLoaded && !fontError) return null;
   if (!authChecked || hasToken === null) return null;
+  if (launchedViaAuthLink === null) return null;
 
   return (
     <ThemeProvider>
-      <ThemedApp hasToken={hasToken} />
+      <ThemedApp hasToken={hasToken} skipRedirect={launchedViaAuthLink} />
     </ThemeProvider>
   );
 }

@@ -1,19 +1,7 @@
-/**
- * src/app/auth.tsx
- *
- * Deep-link handler for sporty-pulse-pro://auth?token=...&isNew=...
- *
- * This screen is never seen by the user — it just catches the OAuth
- * callback, stores the token, and immediately routes to the right screen.
- *
- * New user     → /welcome      (onboarding flow)
- * Returning    → /welcome-back (straight to tabs)
- * Error        → /(auth)/login (back to login with error)
- */
-
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { View, ActivityIndicator, StyleSheet } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
+import { jwtDecode } from "jwt-decode";
 import { storeSessionToken } from "../lib/api";
 import { colors } from "../theme";
 
@@ -25,9 +13,13 @@ export default function AuthCallbackScreen() {
     error?: string;
   }>();
 
+  const hasRun = useRef(false);
+
   useEffect(() => {
+    if (hasRun.current) return;
+    hasRun.current = true;
+
     async function handleCallback() {
-      // Handle error from server
       if (params.error) {
         router.replace({
           pathname: "/(auth)/login",
@@ -36,28 +28,42 @@ export default function AuthCallbackScreen() {
         return;
       }
 
-      // No token — something went wrong
       if (!params.token) {
         router.replace("/(auth)/login" as any);
         return;
       }
 
-      // Store the JWT
       await storeSessionToken(params.token);
 
-      // Route based on whether this is a new user
+      let firstName = "Athlete";
+      let email = "";
+      try {
+        const payload = jwtDecode<{ name?: string; email?: string }>(
+          params.token,
+        );
+        firstName = payload.name?.split(" ")[0] ?? "Athlete";
+        email = payload.email ?? "";
+      } catch {
+        // Fall back to defaults — welcome screens still render fine.
+      }
+
       const isNew = params.isNew === "true";
       if (isNew) {
-        router.replace("/welcome" as any);
+        router.replace({
+          pathname: "/welcome",
+          params: { firstName },
+        } as any);
       } else {
-        router.replace("/welcome-back" as any);
+        router.replace({
+          pathname: "/welcome-back",
+          params: { firstName, email },
+        } as any);
       }
     }
 
     handleCallback();
   }, []);
 
-  // Blank loading screen — user should never see this for more than a frame
   return (
     <View style={styles.fill}>
       <ActivityIndicator color={colors.acid} />
