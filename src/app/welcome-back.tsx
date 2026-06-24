@@ -1,4 +1,3 @@
-// src/app/welcome-back.tsx
 import { useEffect, useState } from "react";
 import { getSessionToken } from "../lib/api";
 import { jwtDecode } from "jwt-decode";
