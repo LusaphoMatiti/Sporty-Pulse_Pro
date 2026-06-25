@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   Image,
   ImageBackground,
+  useWindowDimensions,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -23,8 +24,8 @@ import * as Haptics from "expo-haptics";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { SPText } from "../../components/ui/SPText";
-import { SPButton } from "../../components/ui/SPButton";
 import { SPIcon, IconName } from "../../components/icons/SPIcon";
+import { getEquipmentIcon } from "../../components/icons/Empticons";
 import { api, getEquipment } from "../../lib/api";
 import { spring } from "../../theme";
 import {
@@ -38,6 +39,19 @@ import {
   Sprout,
   TrendingUp,
   Crown,
+  Mars,
+  Venus,
+  MoreHorizontal,
+  Settings,
+  RefreshCw,
+  Target,
+  BarChart3,
+  Home,
+  User,
+  ChevronRight,
+  ChevronLeft,
+  ArrowRight,
+  Star,
 } from "lucide-react-native";
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
@@ -97,6 +111,11 @@ const IDENTITY_CONFIG: Record<
     tagline: string;
     description: string;
     icon: string;
+    IconComponent: React.ComponentType<{
+      size?: number;
+      color?: string;
+      strokeWidth?: number;
+    }>;
     color: string;
     dimColor: string;
     borderColor: string;
@@ -108,6 +127,7 @@ const IDENTITY_CONFIG: Record<
     description:
       "Your plan is designed to rebuild your foundation safely — lower impact, progressive loading, and full-body movements that restore strength without burning you out.",
     icon: "🔄",
+    IconComponent: RefreshCw,
     color: T.rebuild,
     dimColor: T.rebuildDim,
     borderColor: T.rebuildBorder,
@@ -118,6 +138,7 @@ const IDENTITY_CONFIG: Record<
     description:
       "You're ready for structured programming. Your plan builds strength and conditioning week over week with a clear progression path and measurable milestones.",
     icon: "⚙️",
+    IconComponent: Settings,
     color: T.operator,
     dimColor: T.operatorDim,
     borderColor: T.operatorBorder,
@@ -128,6 +149,7 @@ const IDENTITY_CONFIG: Record<
     description:
       "Advanced programming built for athletes who live by structure. Expect intensity, compound movements, and a progression model that pushes your limits week after week.",
     icon: "🏆",
+    IconComponent: Crown,
     color: T.execPerf,
     dimColor: T.execPerfDim,
     borderColor: T.execPerfBorder,
@@ -607,6 +629,18 @@ const CATEGORY_ICON: Record<string, IconName> = {
   core: "target",
 };
 
+// Used only as a fallback when an equipment name doesn't match a known
+// icon alias yet — see EquipmentIcons.tsx to add new precise icons.
+const CATEGORY_FALLBACK_ICON: Record<
+  string,
+  React.ComponentType<{ size: number; color: string; strokeWidth: number }>
+> = {
+  fullbody: Dumbbell,
+  upper: Dumbbell,
+  lower: Dumbbell,
+  core: Dumbbell,
+};
+
 function EquipmentRow({
   item,
   selected,
@@ -616,7 +650,10 @@ function EquipmentRow({
   selected: boolean;
   onPress: () => void;
 }) {
-  const iconName = CATEGORY_ICON[item.category.toLowerCase()] ?? "dumbbell";
+  const categoryKey = item.category.toLowerCase();
+  const fallback = CATEGORY_FALLBACK_ICON[categoryKey];
+  const lucideIcon = getEquipmentIcon(item.name, fallback);
+  const iconName = CATEGORY_ICON[categoryKey] ?? "dumbbell";
   return (
     <OptionCard
       option={{
@@ -624,6 +661,7 @@ function EquipmentRow({
         label: item.name,
         sublabel: `${item.category.charAt(0).toUpperCase() + item.category.slice(1)} focus`,
         iconName,
+        lucideIcon,
       }}
       selected={selected}
       onPress={onPress}
@@ -633,14 +671,18 @@ function EquipmentRow({
 
 // ─── Summary row (confirm step) ───────────────────────────────────────────────
 
-function SummaryRow({
-  iconName,
+function ProfileSnapshotRow({
+  IconComponent,
   label,
   value,
   onEdit,
   isLast,
 }: {
-  iconName: IconName;
+  IconComponent: React.ComponentType<{
+    size?: number;
+    color?: string;
+    strokeWidth?: number;
+  }>;
   label: string;
   value: string;
   onEdit?: () => void;
@@ -650,7 +692,7 @@ function SummaryRow({
     <View style={[confirmStyles.row, isLast && { borderBottomWidth: 0 }]}>
       <View style={confirmStyles.left}>
         <View style={confirmStyles.iconWrap}>
-          <SPIcon name={iconName} size={16} color={T.accent} />
+          <IconComponent size={18} color={T.accent} strokeWidth={1.75} />
         </View>
         <View style={confirmStyles.textCol}>
           <SPText style={confirmStyles.rowLabel}>{label}</SPText>
@@ -658,8 +700,9 @@ function SummaryRow({
         </View>
       </View>
       {onEdit && (
-        <Pressable onPress={onEdit} hitSlop={8}>
+        <Pressable onPress={onEdit} hitSlop={8} style={confirmStyles.editHit}>
           <SPText style={confirmStyles.editBtn}>Edit</SPText>
+          <ChevronRight size={14} color={T.muted2} strokeWidth={2} />
         </Pressable>
       )}
     </View>
@@ -683,25 +726,30 @@ const confirmStyles = StyleSheet.create({
     flex: 1,
   },
   iconWrap: {
-    width: 32,
-    height: 32,
-    borderRadius: T.r8,
-    backgroundColor: T.accentDim,
+    width: 40,
+    height: 40,
+    borderRadius: T.r12,
+    backgroundColor: T.surface2,
     alignItems: "center",
     justifyContent: "center",
   },
   textCol: { flex: 1, gap: 2 },
   rowLabel: {
     fontFamily: "Barlow-Regular",
-    fontSize: 12,
+    fontSize: 11,
     color: T.muted2,
     textTransform: "uppercase",
-    letterSpacing: 0.5,
+    letterSpacing: 0.6,
   },
   rowValue: {
     fontFamily: "Barlow-SemiBold",
-    fontSize: 15,
+    fontSize: 16,
     color: T.text,
+  },
+  editHit: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
   },
   editBtn: {
     fontFamily: "Barlow-Medium",
@@ -715,16 +763,20 @@ const confirmStyles = StyleSheet.create({
 function TrialNotice({ equipmentName }: { equipmentName: string }) {
   return (
     <View style={trialStyles.wrap}>
-      <View style={trialStyles.iconWrap}>
-        <SPIcon name="star" size={16} color={T.accent} />
+      <View style={trialStyles.shieldRing}>
+        <View style={trialStyles.shieldCore}>
+          <Star size={18} color={T.accent} strokeWidth={1.75} fill={T.accent} />
+        </View>
       </View>
       <View style={{ flex: 1, gap: T.s4 }}>
+        <SPText style={trialStyles.eyebrow}>ACCESS UNLOCKED</SPText>
         <SPText style={trialStyles.heading}>14-day free trial activated</SPText>
         <SPText style={trialStyles.body}>
           You'll get full access to {equipmentName} programs for 14 days. Cancel
           or upgrade anytime.
         </SPText>
       </View>
+      <ChevronRight size={18} color={T.muted2} strokeWidth={2} />
     </View>
   );
 }
@@ -732,6 +784,7 @@ function TrialNotice({ equipmentName }: { equipmentName: string }) {
 const trialStyles = StyleSheet.create({
   wrap: {
     flexDirection: "row",
+    alignItems: "center",
     gap: T.s16,
     backgroundColor: T.accentDim,
     borderWidth: 1,
@@ -739,18 +792,33 @@ const trialStyles = StyleSheet.create({
     borderRadius: T.r16,
     padding: T.s16,
   },
-  iconWrap: {
-    width: 32,
-    height: 32,
-    borderRadius: T.r8,
-    backgroundColor: "rgba(200,241,53,0.15)",
+  shieldRing: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: T.accentBorder,
     alignItems: "center",
     justifyContent: "center",
   },
+  shieldCore: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "rgba(200,241,53,0.16)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  eyebrow: {
+    fontFamily: "Barlow-SemiBold",
+    fontSize: 11,
+    letterSpacing: 0.8,
+    color: T.accent,
+  },
   heading: {
     fontFamily: "Barlow-SemiBold",
-    fontSize: 14,
-    color: T.accent,
+    fontSize: 15,
+    color: T.text,
   },
   body: {
     fontFamily: "Barlow-Regular",
@@ -760,7 +828,175 @@ const trialStyles = StyleSheet.create({
   },
 });
 
-// ─── Step header ──────────────────────────────────────────────────────────────
+// ─── Program identity card (slide 8 hero card) ────────────────────────────────
+
+function ProgramIdentityCard({
+  identity,
+  statChips,
+}: {
+  identity: Identity;
+  statChips: string[];
+}) {
+  const cfg = IDENTITY_CONFIG[identity];
+  const Icon = cfg.IconComponent;
+
+  const cardScale = useSharedValue(0.96);
+  const cardOpacity = useSharedValue(0);
+
+  useEffect(() => {
+    cardOpacity.value = withTiming(1, { duration: 420 });
+    cardScale.value = withSpring(1, { damping: 16, stiffness: 140 });
+  }, []);
+
+  const cardAnim = useAnimatedStyle(() => ({
+    opacity: cardOpacity.value,
+    transform: [{ scale: cardScale.value }],
+  }));
+
+  return (
+    <Animated.View
+      style={[
+        programCardStyles.wrap,
+        { borderColor: cfg.borderColor },
+        cardAnim,
+      ]}
+    >
+      <View style={programCardStyles.top}>
+        <View style={programCardStyles.emblemWrap}>
+          <View
+            style={[
+              programCardStyles.emblemRing,
+              { borderColor: cfg.borderColor },
+            ]}
+          />
+          <View
+            style={[
+              programCardStyles.emblemCore,
+              {
+                backgroundColor: cfg.dimColor,
+                shadowColor: cfg.color,
+              },
+            ]}
+          >
+            <Icon size={30} color={cfg.color} strokeWidth={1.5} />
+          </View>
+        </View>
+
+        <View style={programCardStyles.textCol}>
+          <SPText style={[programCardStyles.eyebrow, { color: cfg.color }]}>
+            YOUR PROGRAM
+          </SPText>
+          <SPText
+            style={programCardStyles.title}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.6}
+          >
+            {cfg.label.toUpperCase()}
+          </SPText>
+          <View
+            style={[
+              programCardStyles.taglineAccent,
+              { backgroundColor: cfg.color },
+            ]}
+          />
+          <SPText style={programCardStyles.tagline}>{cfg.tagline}</SPText>
+        </View>
+      </View>
+
+      {statChips.length > 0 && (
+        <View style={programCardStyles.chipRow}>
+          {statChips.map((chip) => (
+            <View key={chip} style={programCardStyles.chip}>
+              <SPText style={programCardStyles.chipText}>{chip}</SPText>
+            </View>
+          ))}
+        </View>
+      )}
+    </Animated.View>
+  );
+}
+
+const programCardStyles = StyleSheet.create({
+  wrap: {
+    backgroundColor: T.surface,
+    borderWidth: 1,
+    borderRadius: T.r20,
+    padding: T.s16,
+    gap: T.s16,
+    overflow: "hidden",
+  },
+  top: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: T.s16,
+  },
+  emblemWrap: {
+    width: 76,
+    height: 76,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emblemRing: {
+    position: "absolute",
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    borderWidth: 1,
+  },
+  emblemCore: {
+    width: 56,
+    height: 56,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowOpacity: 0.5,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 6,
+  },
+  textCol: { flex: 1, gap: 4 },
+  eyebrow: {
+    fontFamily: "Barlow-SemiBold",
+    fontSize: 11,
+    letterSpacing: 0.8,
+  },
+  title: {
+    fontFamily: "BarlowCondensed-Bold",
+    fontSize: 26,
+    letterSpacing: 0.5,
+    color: T.text,
+  },
+  taglineAccent: {
+    width: 28,
+    height: 2,
+    borderRadius: 1,
+    marginTop: 2,
+    marginBottom: 2,
+  },
+  tagline: {
+    fontFamily: "Barlow-Regular",
+    fontSize: 13,
+    color: T.muted2,
+  },
+  chipRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: T.s8,
+  },
+  chip: {
+    backgroundColor: T.surface2,
+    borderRadius: T.r8,
+    paddingVertical: 6,
+    paddingHorizontal: T.s12,
+  },
+  chipText: {
+    fontFamily: "Barlow-SemiBold",
+    fontSize: 11,
+    letterSpacing: 0.6,
+    color: T.muted2,
+  },
+});
 
 function StepHeader({
   title,
@@ -853,28 +1089,29 @@ function IdentityRevealStep({
   error: boolean;
   onRetry: () => void;
 }) {
-  const badgeScale = useSharedValue(0.7);
-  const badgeOpacity = useSharedValue(0);
-  const textOpacity = useSharedValue(0);
+  const { width } = useWindowDimensions();
+  const stacked = width < 360;
+
+  const cardOpacity = useSharedValue(0);
+  const cardTranslate = useSharedValue(16);
+  const rowsOpacity = useSharedValue(0);
+  const ctaOpacity = useSharedValue(0);
 
   useEffect(() => {
     if (identity) {
-      // Badge pops in first
-      badgeScale.value = withSpring(1, { damping: 14, stiffness: 180 });
-      badgeOpacity.value = withTiming(1, { duration: 300 });
-      // Description fades in after
-      textOpacity.value = withDelay(250, withTiming(1, { duration: 400 }));
+      cardOpacity.value = withTiming(1, { duration: 420 });
+      cardTranslate.value = withSpring(0, { damping: 16, stiffness: 140 });
+      rowsOpacity.value = withDelay(220, withTiming(1, { duration: 380 }));
+      ctaOpacity.value = withDelay(420, withTiming(1, { duration: 320 }));
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }
   }, [identity]);
 
-  const badgeAnim = useAnimatedStyle(() => ({
-    transform: [{ scale: badgeScale.value }],
-    opacity: badgeOpacity.value,
+  const cardAnim = useAnimatedStyle(() => ({
+    opacity: cardOpacity.value,
+    transform: [{ translateY: cardTranslate.value }],
   }));
-  const textAnim = useAnimatedStyle(() => ({
-    opacity: textOpacity.value,
-  }));
+  const rowsAnim = useAnimatedStyle(() => ({ opacity: rowsOpacity.value }));
 
   if (loading) {
     return (
@@ -903,70 +1140,153 @@ function IdentityRevealStep({
   }
 
   const cfg = IDENTITY_CONFIG[identity];
+  const Icon = cfg.IconComponent;
 
   return (
     <View style={identityStyles.wrap}>
-      <StepHeader
-        eyebrow="Your training identity"
-        title={"You've been\nassigned."}
-      />
+      {/* ── Hero ─────────────────────────────────────────────── */}
+      <View style={identityStyles.hero}>
+        <SPText style={identityStyles.eyebrow}>YOUR TRAINING IDENTITY</SPText>
+        <SPText style={identityStyles.heroTitle}>
+          You've been{"\n"}assigned
+          <SPText style={[identityStyles.heroTitle, { color: T.accent }]}>
+            .
+          </SPText>
+        </SPText>
+      </View>
 
-      {/* Animated badge */}
-      <Animated.View style={[identityStyles.badgeWrap, badgeAnim]}>
+      {/* ── Identity emblem card ─────────────────────────────── */}
+      <Animated.View
+        style={[
+          identityStyles.card,
+          { borderColor: cfg.borderColor },
+          cardAnim,
+        ]}
+      >
         <View
           style={[
-            identityStyles.badge,
-            {
-              backgroundColor: cfg.dimColor,
-              borderColor: cfg.borderColor,
-            },
+            identityStyles.cardTop,
+            stacked && identityStyles.cardTopStacked,
           ]}
         >
-          <SPText style={identityStyles.badgeIcon}>{cfg.icon}</SPText>
-          <View style={identityStyles.badgeTextCol}>
-            <SPText style={[identityStyles.badgeLabel, { color: cfg.color }]}>
+          <View style={identityStyles.emblemWrap}>
+            <View
+              style={[
+                identityStyles.emblemRing,
+                { borderColor: cfg.borderColor },
+              ]}
+            />
+            <View
+              style={[
+                identityStyles.emblemFrame,
+                {
+                  borderColor: cfg.borderColor,
+                  backgroundColor: cfg.dimColor,
+                  shadowColor: cfg.color,
+                },
+              ]}
+            >
+              <Icon size={36} color={cfg.color} strokeWidth={1.5} />
+            </View>
+          </View>
+
+          <View
+            style={[
+              identityStyles.identityTextCol,
+              stacked && identityStyles.identityTextColStacked,
+            ]}
+          >
+            <SPText
+              style={[identityStyles.identityLabel, { color: cfg.color }]}
+            >
+              YOUR IDENTITY
+            </SPText>
+            <SPText
+              style={identityStyles.identityTitle}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.6}
+            >
               {cfg.label.toUpperCase()}
             </SPText>
-            <SPText style={identityStyles.badgeTagline}>{cfg.tagline}</SPText>
+            <SPText style={identityStyles.identityTagline}>
+              {cfg.tagline}
+            </SPText>
           </View>
+        </View>
+
+        <View style={identityStyles.descPanel}>
+          <View
+            style={[
+              identityStyles.descAccentLine,
+              { backgroundColor: cfg.color },
+            ]}
+          />
+          <SPText style={identityStyles.descText}>{cfg.description}</SPText>
         </View>
       </Animated.View>
 
-      {/* Description */}
-      <Animated.View style={[identityStyles.descCard, textAnim]}>
-        <SPText style={identityStyles.descText}>{cfg.description}</SPText>
-      </Animated.View>
-
-      {/* What this means bullets */}
-      <Animated.View style={[{ gap: T.s12 }, textAnim]}>
-        <IdentityBullet
-          color={cfg.color}
-          text="Programs are pre-filtered to match your identity"
+      {/* ── Benefit rows ─────────────────────────────────────── */}
+      <Animated.View style={[identityStyles.benefits, rowsAnim]}>
+        <BenefitRow
+          IconComponent={Target}
+          color={T.accent}
+          title="Programs are pre-filtered"
+          subtitle="to match your identity"
         />
-        <IdentityBullet
-          color={cfg.color}
-          text="Sets, reps and rest progress automatically each week"
+        <View style={identityStyles.divider} />
+        <BenefitRow
+          IconComponent={BarChart3}
+          color={T.accent}
+          title="Sets, reps and rest progress"
+          subtitle="automatically each week"
         />
-        <IdentityBullet
-          color={cfg.color}
-          text="Your identity evolves as you progress — you can always check it in Settings"
+        <View style={identityStyles.divider} />
+        <BenefitRow
+          IconComponent={Shield}
+          color={T.accent}
+          title="Your identity evolves as you progress"
+          subtitle="you can always check it in Settings"
+          isLast
         />
       </Animated.View>
     </View>
   );
 }
 
-function IdentityBullet({ color, text }: { color: string; text: string }) {
+function BenefitRow({
+  IconComponent,
+  color,
+  title,
+  subtitle,
+  isLast,
+}: {
+  IconComponent: React.ComponentType<{
+    size?: number;
+    color?: string;
+    strokeWidth?: number;
+  }>;
+  color: string;
+  title: string;
+  subtitle: string;
+  isLast?: boolean;
+}) {
   return (
-    <View style={identityStyles.bulletRow}>
-      <View style={[identityStyles.bulletDot, { backgroundColor: color }]} />
-      <SPText style={identityStyles.bulletText}>{text}</SPText>
+    <View style={identityStyles.benefitRow}>
+      <View style={identityStyles.benefitIconWrap}>
+        <IconComponent size={20} color={color} strokeWidth={2} />
+      </View>
+      <View style={identityStyles.benefitTextCol}>
+        <SPText style={identityStyles.benefitTitle}>{title}</SPText>
+        <SPText style={identityStyles.benefitSubtitle}>{subtitle}</SPText>
+      </View>
     </View>
   );
 }
 
 const identityStyles = StyleSheet.create({
-  wrap: { gap: T.s24 },
+  wrap: { gap: T.s32 },
+
   loadingWrap: {
     alignItems: "center",
     justifyContent: "center",
@@ -1001,62 +1321,138 @@ const identityStyles = StyleSheet.create({
     color: T.accent,
   },
 
-  badgeWrap: { alignItems: "center" },
-  badge: {
+  // Hero
+  hero: { gap: T.s12 },
+  eyebrow: {
+    fontFamily: "Barlow-Medium",
+    fontSize: 12,
+    color: T.muted2,
+    textTransform: "uppercase",
+    letterSpacing: 4,
+  },
+  heroTitle: {
+    fontFamily: "Barlow-Bold",
+    fontSize: 40,
+    lineHeight: 44,
+    color: T.text,
+  },
+
+  // Identity card
+  card: {
+    backgroundColor: T.surface,
+    borderRadius: 32,
+    borderWidth: 1,
+    padding: T.s24,
+    gap: T.s24,
+  },
+  cardTop: {
     flexDirection: "row",
     alignItems: "center",
+    gap: T.s24,
+  },
+  cardTopStacked: {
+    flexDirection: "column",
+    alignItems: "flex-start",
     gap: T.s16,
+  },
+
+  emblemWrap: {
+    width: 96,
+    height: 96,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emblemRing: {
+    position: "absolute",
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    borderWidth: 1,
+    opacity: 0.35,
+  },
+  emblemFrame: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     borderWidth: 1.5,
-    borderRadius: T.r20,
-    paddingHorizontal: T.s24,
-    paddingVertical: T.s16,
-    width: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.45,
+    shadowRadius: 18,
+    elevation: 10,
   },
-  badgeIcon: { fontSize: 36 },
-  badgeTextCol: { flex: 1, gap: T.s4 },
-  badgeLabel: {
+
+  identityTextCol: { flex: 1, gap: T.s4 },
+  identityTextColStacked: { flex: 0, width: "100%" },
+  identityLabel: {
+    fontFamily: "Barlow-Medium",
+    fontSize: 12,
+    textTransform: "uppercase",
+    letterSpacing: 2,
+  },
+  identityTitle: {
     fontFamily: "BarlowCondensed-Bold",
-    fontSize: 22,
-    letterSpacing: 1.5,
+    fontSize: 26,
+    letterSpacing: 1,
+    color: T.text,
   },
-  badgeTagline: {
+  identityTagline: {
     fontFamily: "Barlow-Regular",
-    fontSize: 13,
+    fontSize: 14,
     color: T.muted2,
   },
 
-  descCard: {
-    backgroundColor: T.surface,
-    borderRadius: T.r16,
-    borderWidth: 1,
-    borderColor: T.border,
+  descPanel: {
+    flexDirection: "row",
+    gap: T.s12,
+    backgroundColor: T.surface2,
+    borderRadius: T.r20,
     padding: T.s16,
   },
+  descAccentLine: {
+    width: 3,
+    borderRadius: 2,
+    alignSelf: "stretch",
+  },
   descText: {
+    flex: 1,
     fontFamily: "Barlow-Regular",
     fontSize: 14,
     color: T.muted2,
     lineHeight: 22,
   },
 
-  bulletRow: {
+  // Benefit rows
+  benefits: { gap: 0 },
+  benefitRow: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    gap: T.s12,
+    alignItems: "center",
+    gap: T.s16,
+    paddingVertical: T.s16,
   },
-  bulletDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    marginTop: 7,
-    flexShrink: 0,
+  benefitIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: T.surface2,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  bulletText: {
-    flex: 1,
+  benefitTextCol: { flex: 1, gap: 2 },
+  benefitTitle: {
+    fontFamily: "Barlow-SemiBold",
+    fontSize: 16,
+    color: T.text,
+  },
+  benefitSubtitle: {
     fontFamily: "Barlow-Regular",
-    fontSize: 14,
+    fontSize: 13,
     color: T.muted2,
-    lineHeight: 20,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: T.border,
   },
 });
 
@@ -1122,6 +1518,14 @@ export function OnboardingScreen() {
 
   function setAnswer<K extends keyof Answers>(key: K, value: Answers[K]) {
     setAnswers((prev) => ({ ...prev, [key]: value }));
+
+    // If the experience level changes after an identity was already
+    // assigned (e.g. user went back and picked a different level),
+    // clear the stale identity so it gets re-fetched with the new value.
+    if (key === "experienceLevel") {
+      setAssignedIdentity(null);
+      setIdentityError(false);
+    }
   }
 
   const fetchEquipment = useCallback(async () => {
@@ -1254,151 +1658,128 @@ export function OnboardingScreen() {
 
   // ── Confirm screen — full-bleed background image ─────────────────────────────
   if (currentStep === "confirm") {
-    const identityCfg = assignedIdentity
-      ? IDENTITY_CONFIG[assignedIdentity]
-      : null;
+    const statChips = [
+      LOCATION_LABEL[answers.trainingLocation]?.toUpperCase(),
+      LEVEL_LABEL[answers.experienceLevel]?.toUpperCase(),
+      answers.trainingLocation === "HOME"
+        ? (selectedEquipment?.name ?? "Bodyweight").toUpperCase()
+        : null,
+    ].filter(Boolean) as string[];
 
     return (
       <View style={styles.fill}>
-        <ImageBackground
-          source={require("../../../assets/images/all_set.png")}
-          style={styles.fill}
-          resizeMode="cover"
+        <View
+          style={[
+            styles.confirmInner,
+            {
+              paddingTop: insets.top + T.s8,
+              paddingBottom: insets.bottom + T.s24,
+            },
+          ]}
         >
-          <View style={styles.confirmOverlay} />
-          <View
-            style={[
-              styles.confirmInner,
-              {
-                paddingTop: insets.top + T.s8,
-                paddingBottom: insets.bottom + T.s24,
-              },
-            ]}
+          <HeaderBar
+            currentIndex={currentIndex}
+            total={totalSteps}
+            onBack={goBack}
+          />
+
+          <ScrollView
+            style={styles.fill}
+            contentContainerStyle={styles.confirmScrollContent}
+            showsVerticalScrollIndicator={false}
           >
-            <HeaderBar
-              currentIndex={currentIndex}
-              total={totalSteps}
-              onBack={goBack}
-            />
-
-            <ScrollView
-              style={styles.fill}
-              contentContainerStyle={styles.confirmScrollContent}
-              showsVerticalScrollIndicator={false}
-            >
-              <View style={styles.confirmTitleWrap}>
-                <SPText style={confirmScreenStyles.allSet}>
-                  You're all set.
-                </SPText>
-                <SPText style={confirmScreenStyles.profileLabel}>
-                  Here's your profile.
-                </SPText>
-              </View>
-
-              {/* Identity summary badge */}
-              {identityCfg && (
-                <View
-                  style={[
-                    styles.identityBadgeSummary,
-                    {
-                      backgroundColor: identityCfg.dimColor,
-                      borderColor: identityCfg.borderColor,
-                    },
-                  ]}
+            <View style={styles.confirmTitleWrap}>
+              <SPText style={confirmScreenStyles.allSet}>
+                You're ready
+                <SPText
+                  style={[confirmScreenStyles.allSet, { color: T.accent }]}
                 >
-                  <SPText style={styles.identityBadgeIcon}>
-                    {identityCfg.icon}
-                  </SPText>
-                  <View style={{ flex: 1 }}>
-                    <SPText
-                      style={[
-                        styles.identityBadgeLabel,
-                        { color: identityCfg.color },
-                      ]}
-                    >
-                      {identityCfg.label}
-                    </SPText>
-                    <SPText style={styles.identityBadgeTagline}>
-                      {identityCfg.tagline}
-                    </SPText>
-                  </View>
-                </View>
-              )}
-
-              <View style={styles.summaryCard}>
-                <SummaryRow
-                  iconName="target"
-                  label="Goal"
-                  value={GOAL_LABEL[answers.primaryGoal] ?? "—"}
-                  onEdit={() => {
-                    animateToStep(-1);
-                    setCurrentStep("goal");
-                  }}
-                />
-                <SummaryRow
-                  iconName="home"
-                  label="Where you train"
-                  value={LOCATION_LABEL[answers.trainingLocation] ?? "—"}
-                  onEdit={() => {
-                    animateToStep(-1);
-                    setCurrentStep("location");
-                  }}
-                />
-                <SummaryRow
-                  iconName="person"
-                  label="Biological sex"
-                  value={SEX_LABEL[answers.biologicalSex] ?? "—"}
-                  onEdit={() => {
-                    animateToStep(-1);
-                    setCurrentStep("sex");
-                  }}
-                />
-                {answers.trainingLocation === "HOME" && (
-                  <SummaryRow
-                    iconName="dumbbell"
-                    label="Equipment"
-                    value={selectedEquipment?.name ?? "Bodyweight only"}
-                    onEdit={() => {
-                      animateToStep(-1);
-                      setCurrentStep("hasEquipment");
-                    }}
-                  />
-                )}
-                <SummaryRow
-                  iconName="chart"
-                  label="Experience level"
-                  value={LEVEL_LABEL[answers.experienceLevel] ?? "—"}
-                  onEdit={() => {
-                    animateToStep(-1);
-                    setCurrentStep("experience");
-                  }}
-                  isLast
-                />
-              </View>
-
-              {selectedEquipment && (
-                <TrialNotice equipmentName={selectedEquipment.name} />
-              )}
-
-              {error ? (
-                <View style={[styles.errorBox, { marginTop: T.s8 }]}>
-                  <SPIcon name="warning" size={14} color={T.danger} />
-                  <SPText style={styles.errorText}>{error}</SPText>
-                </View>
-              ) : null}
-            </ScrollView>
-
-            <View style={styles.confirmActions}>
-              <SPButton
-                onPress={handleComplete}
-                loading={submitting}
-                containerStyle={{ width: "100%" }}
-              >
-                Start My Plan
-              </SPButton>
+                  .
+                </SPText>
+              </SPText>
+              <SPText style={confirmScreenStyles.profileLabel}>
+                Your training system is ready.
+              </SPText>
             </View>
+
+            {assignedIdentity && (
+              <ProgramIdentityCard
+                identity={assignedIdentity}
+                statChips={statChips}
+              />
+            )}
+
+            <View style={styles.summaryCard}>
+              <ProfileSnapshotRow
+                IconComponent={Target}
+                label="Goal"
+                value={GOAL_LABEL[answers.primaryGoal] ?? "—"}
+                onEdit={() => {
+                  animateToStep(-1);
+                  setCurrentStep("goal");
+                }}
+              />
+              <ProfileSnapshotRow
+                IconComponent={Home}
+                label="Training location"
+                value={LOCATION_LABEL[answers.trainingLocation] ?? "—"}
+                onEdit={() => {
+                  animateToStep(-1);
+                  setCurrentStep("location");
+                }}
+              />
+              <ProfileSnapshotRow
+                IconComponent={User}
+                label="Biological sex"
+                value={SEX_LABEL[answers.biologicalSex] ?? "—"}
+                onEdit={() => {
+                  animateToStep(-1);
+                  setCurrentStep("sex");
+                }}
+              />
+              {answers.trainingLocation === "HOME" && (
+                <ProfileSnapshotRow
+                  IconComponent={Dumbbell}
+                  label="Equipment"
+                  value={selectedEquipment?.name ?? "Bodyweight only"}
+                  onEdit={() => {
+                    animateToStep(-1);
+                    setCurrentStep("hasEquipment");
+                  }}
+                />
+              )}
+              <ProfileSnapshotRow
+                IconComponent={BarChart3}
+                label="Experience"
+                value={LEVEL_LABEL[answers.experienceLevel] ?? "—"}
+                onEdit={() => {
+                  animateToStep(-1);
+                  setCurrentStep("experience");
+                }}
+                isLast
+              />
+            </View>
+
+            {selectedEquipment && (
+              <TrialNotice equipmentName={selectedEquipment.name} />
+            )}
+
+            {error ? (
+              <View style={[styles.errorBox, { marginTop: T.s8 }]}>
+                <SPIcon name="warning" size={14} color={T.danger} />
+                <SPText style={styles.errorText}>{error}</SPText>
+              </View>
+            ) : null}
+          </ScrollView>
+
+          <View style={styles.confirmActions}>
+            <OnboardingCTA
+              label="START MY PLAN"
+              onPress={handleComplete}
+              loading={submitting}
+            />
           </View>
-        </ImageBackground>
+        </View>
       </View>
     );
   }
@@ -1512,12 +1893,23 @@ export function OnboardingScreen() {
               <View style={styles.options}>
                 {(
                   [
-                    { value: "MALE", label: "Male", iconName: "person" },
-                    { value: "FEMALE", label: "Female", iconName: "person" },
+                    {
+                      value: "MALE",
+                      label: "Male",
+                      iconName: "person",
+                      lucideIcon: Mars,
+                    },
+                    {
+                      value: "FEMALE",
+                      label: "Female",
+                      iconName: "person",
+                      lucideIcon: Venus,
+                    },
                     {
                       value: "NOT_SPECIFIED",
                       label: "Prefer not to say",
                       iconName: "ellipsis",
+                      lucideIcon: MoreHorizontal,
                     },
                   ] as Option[]
                 ).map((opt) => (
@@ -1668,18 +2060,114 @@ export function OnboardingScreen() {
 
         {/* ── Continue button ───────────────────────────────────────── */}
         {currentStep !== "identity" || !identityLoading ? (
-          <SPButton
-            onPress={() => {
-              if (canAdvance()) goForward();
-            }}
-            disabled={!canAdvance()}
-            containerStyle={{ marginTop: T.s8 }}
-          >
-            {currentStep === "identity" ? "Let's go →" : "Continue"}
-          </SPButton>
+          <View style={{ marginTop: T.s8 }}>
+            <OnboardingCTA
+              label={currentStep === "identity" ? "LET'S GO" : "CONTINUE"}
+              onPress={() => {
+                if (canAdvance()) goForward();
+              }}
+              disabled={!canAdvance()}
+            />
+          </View>
         ) : null}
       </ScrollView>
     </View>
+  );
+}
+
+const ctaStyles = StyleSheet.create({
+  button: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: T.s12,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: T.accent,
+    shadowColor: T.accent,
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 8,
+  },
+  buttonPressed: {
+    backgroundColor: "#B5DC2E",
+  },
+  buttonDisabled: {
+    backgroundColor: T.surface2,
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  label: {
+    fontFamily: "Barlow-Bold",
+    fontSize: 15,
+    letterSpacing: 1,
+    color: T.bg,
+  },
+  labelDisabled: {
+    color: T.muted2,
+  },
+  arrowCapsule: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "rgba(12,14,16,0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  arrowCapsuleDisabled: {
+    backgroundColor: "rgba(255,255,255,0.06)",
+  },
+});
+
+// ─── Shared onboarding CTA (pill button, used on every step) ─────────────────
+
+function OnboardingCTA({
+  label,
+  onPress,
+  disabled,
+  loading,
+}: {
+  label: string;
+  onPress: () => void;
+  disabled?: boolean;
+  loading?: boolean;
+}) {
+  const isInactive = !!disabled || !!loading;
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={isInactive}
+      style={({ pressed }) => [
+        ctaStyles.button,
+        isInactive && ctaStyles.buttonDisabled,
+        pressed && !isInactive && ctaStyles.buttonPressed,
+      ]}
+    >
+      {loading ? (
+        <ActivityIndicator color={T.bg} />
+      ) : (
+        <>
+          <SPText
+            style={[ctaStyles.label, isInactive && ctaStyles.labelDisabled]}
+          >
+            {label}
+          </SPText>
+          <View
+            style={[
+              ctaStyles.arrowCapsule,
+              isInactive && ctaStyles.arrowCapsuleDisabled,
+            ]}
+          >
+            <ArrowRight
+              size={16}
+              color={isInactive ? T.muted2 : T.bg}
+              strokeWidth={2.25}
+            />
+          </View>
+        </>
+      )}
+    </Pressable>
   );
 }
 
@@ -1688,14 +2176,15 @@ export function OnboardingScreen() {
 const confirmScreenStyles = StyleSheet.create({
   allSet: {
     fontFamily: "BarlowCondensed-Bold",
-    fontSize: 44,
-    lineHeight: 48,
+    fontSize: 48,
+    lineHeight: 52,
     color: T.text,
   },
   profileLabel: {
     fontFamily: "Barlow-Regular",
-    fontSize: 18,
+    fontSize: 17,
     color: T.muted2,
+    marginTop: 4,
   },
   dashboardLink: {
     fontFamily: "Barlow-Medium",

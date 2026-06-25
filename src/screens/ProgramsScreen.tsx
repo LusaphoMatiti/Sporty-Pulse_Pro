@@ -44,6 +44,7 @@ import { SPText } from "../components/ui/SPText";
 import { SPButton } from "../components/ui/SPButton";
 import { SPIcon } from "../components/icons/SPIcon";
 import { useAppTheme } from "../theme/ThemeContext";
+import { useTabBarHeight } from "../hooks/Usetabbarheight";
 import { api } from "../lib/api";
 import { CACHE_KEYS } from "../lib/cacheKeys";
 
@@ -140,43 +141,77 @@ interface ProgramsData {
 }
 
 // ─── Identity config ──────────────────────────────────────────────────────────
+// Dark-mode colours are bright/neon by design (they sit on a near-black bg).
+// Light-mode needs deeper, less saturated tones of the same hue or they glare
+// on a light surface — same approach already used for theme.accent.
 
 const IDENTITY_META: Record<
   Identity,
   {
     label: string;
     shortLabel: string;
-    color: string;
-    dimColor: string;
-    borderColor: string;
+    dark: { color: string; dimColor: string; borderColor: string };
+    light: { color: string; dimColor: string; borderColor: string };
     icon: IconName;
   }
 > = {
   REBUILD: {
     label: "Rebuild",
     shortLabel: "REBUILD",
-    color: "#60A5FA",
-    dimColor: "rgba(96,165,250,0.10)",
-    borderColor: "rgba(96,165,250,0.25)",
+    dark: {
+      color: "#60A5FA",
+      dimColor: "rgba(96,165,250,0.10)",
+      borderColor: "rgba(96,165,250,0.25)",
+    },
+    light: {
+      color: "#2563EB",
+      dimColor: "rgba(37,99,235,0.08)",
+      borderColor: "rgba(37,99,235,0.22)",
+    },
     icon: "repeat",
   },
   OPERATOR: {
     label: "Operator",
     shortLabel: "OPERATOR",
-    color: "#C8F135",
-    dimColor: "rgba(200,241,53,0.08)",
-    borderColor: "rgba(200,241,53,0.25)",
+    dark: {
+      color: "#C8F135",
+      dimColor: "rgba(200,241,53,0.08)",
+      borderColor: "rgba(200,241,53,0.25)",
+    },
+    light: {
+      color: "#5C8A00",
+      dimColor: "rgba(92,138,0,0.08)",
+      borderColor: "rgba(92,138,0,0.22)",
+    },
     icon: "settings",
   },
   EXECUTIVE_PERFORMANCE: {
     label: "Executive Performance",
     shortLabel: "EXEC",
-    color: "#F59E0B",
-    dimColor: "rgba(245,158,11,0.10)",
-    borderColor: "rgba(245,158,11,0.25)",
+    dark: {
+      color: "#F59E0B",
+      dimColor: "rgba(245,158,11,0.10)",
+      borderColor: "rgba(245,158,11,0.25)",
+    },
+    light: {
+      color: "#B45309",
+      dimColor: "rgba(180,83,9,0.08)",
+      borderColor: "rgba(180,83,9,0.22)",
+    },
     icon: "trophy",
   },
 };
+
+function getIdentityMeta(identity: Identity, isDark: boolean) {
+  const meta = IDENTITY_META[identity];
+  const palette = isDark ? meta.dark : meta.light;
+  return {
+    label: meta.label,
+    shortLabel: meta.shortLabel,
+    icon: meta.icon,
+    ...palette,
+  };
+}
 
 // ─── Category config ──────────────────────────────────────────────────────────
 
@@ -270,11 +305,17 @@ function getLockReason(
 function getTrialUrgency(
   msLeft: number,
   daysLeft: number,
+  isDark: boolean,
 ): { color: string; icon: IconName } {
-  if (msLeft <= 0) return { color: "#A855F7", icon: "lock" };
-  if (daysLeft === 0) return { color: "#EF4444", icon: "fire" };
-  if (daysLeft <= 3) return { color: "#F59E0B", icon: "warning" };
-  return { color: "#22C55E", icon: "timer" };
+  // Dark-mode colours are bright/neon by design; light-mode uses deeper,
+  // less saturated tones of the same hue so they don't glare on a light bg.
+  if (msLeft <= 0)
+    return { color: isDark ? "#A855F7" : "#7E22CE", icon: "lock" };
+  if (daysLeft === 0)
+    return { color: isDark ? "#EF4444" : "#DC2626", icon: "fire" };
+  if (daysLeft <= 3)
+    return { color: isDark ? "#F59E0B" : "#B45309", icon: "warning" };
+  return { color: isDark ? "#22C55E" : "#15803D", icon: "timer" };
 }
 
 function muscleGroupLabel(
@@ -462,44 +503,65 @@ function LevelCard({
   identity,
   onViewSettings,
   theme,
+  isDark,
 }: {
   identity: Identity;
   onViewSettings: () => void;
   theme: any;
+  isDark: boolean;
 }) {
-  const meta = IDENTITY_META[identity];
+  const meta = getIdentityMeta(identity, isDark);
   return (
     <SlideUp index={0}>
       <View
         style={[
           lc.card,
-          { backgroundColor: meta.dimColor, borderColor: meta.borderColor },
+          { backgroundColor: theme.surface, borderColor: meta.borderColor },
         ]}
       >
-        <View
-          style={[
-            lc.iconWrap,
-            {
-              backgroundColor: meta.color + "18",
-              borderColor: meta.color + "25",
-            },
-          ]}
-        >
-          <SPIcon name={meta.icon} size={18} color={meta.color} weight="fill" />
+        <View style={lc.top}>
+          <View style={lc.emblemWrap}>
+            <View style={[lc.emblemRing, { borderColor: meta.borderColor }]} />
+            <View
+              style={[
+                lc.emblemCore,
+                { backgroundColor: meta.dimColor, shadowColor: meta.color },
+              ]}
+            >
+              <SPIcon
+                name={meta.icon}
+                size={20}
+                color={meta.color}
+                weight="fill"
+              />
+            </View>
+          </View>
+
+          <View style={{ flex: 1, gap: 2 }}>
+            <SPText style={[lc.eyebrow, { color: meta.color }]}>
+              YOUR PROGRAM
+            </SPText>
+            <SPText
+              style={[lc.title, { color: theme.text }]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.7}
+            >
+              {meta.label.toUpperCase()}
+            </SPText>
+            <View style={[lc.taglineAccent, { backgroundColor: meta.color }]} />
+            <SPText style={[lc.desc, { color: theme.muted2 }]}>
+              Programs matched to your training identity.
+            </SPText>
+          </View>
         </View>
-        <View style={{ flex: 1, gap: T.s4 }}>
-          <SPText style={[lc.label, { color: meta.color }]}>
-            {meta.label}
-          </SPText>
-          <SPText style={[lc.desc, { color: theme.muted2 }]}>
-            Programs matched to your training identity.
-          </SPText>
-        </View>
+
         <PressableScale onPress={onViewSettings}>
           <View style={[lc.pill, { borderColor: meta.borderColor }]}>
             <SPText style={[lc.pillText, { color: meta.color }]}>
               {meta.shortLabel}
             </SPText>
+            <ChevronRight size={12} color={meta.color} strokeWidth={2.5} />
           </View>
         </PressableScale>
       </View>
@@ -516,25 +578,37 @@ function ProCard({ theme }: { theme: any }) {
           { backgroundColor: theme.surface, borderColor: theme.accent + "25" },
         ]}
       >
-        <View
-          style={[
-            lc.iconWrap,
-            {
-              backgroundColor: theme.accentDim,
-              borderColor: theme.accent + "20",
-            },
-          ]}
-        >
-          <Zap size={18} color={theme.accent} strokeWidth={2.5} />
+        <View style={lc.top}>
+          <View style={lc.emblemWrap}>
+            <View
+              style={[lc.emblemRing, { borderColor: theme.accent + "35" }]}
+            />
+            <View
+              style={[
+                lc.emblemCore,
+                { backgroundColor: theme.accentDim, shadowColor: theme.accent },
+              ]}
+            >
+              <Zap size={20} color={theme.accent} strokeWidth={2.5} />
+            </View>
+          </View>
+
+          <View style={{ flex: 1, gap: 2 }}>
+            <SPText style={[lc.eyebrow, { color: theme.accent }]}>
+              YOUR ACCESS
+            </SPText>
+            <SPText style={[lc.title, { color: theme.text }]}>
+              PRO ACCESS
+            </SPText>
+            <View
+              style={[lc.taglineAccent, { backgroundColor: theme.accent }]}
+            />
+            <SPText style={[lc.desc, { color: theme.muted2 }]}>
+              All programs unlocked · No limits.
+            </SPText>
+          </View>
         </View>
-        <View style={{ flex: 1, gap: T.s4 }}>
-          <SPText style={[lc.label, { color: theme.accent }]}>
-            Pro Access
-          </SPText>
-          <SPText style={[lc.desc, { color: theme.muted2 }]}>
-            All programs unlocked · No limits.
-          </SPText>
-        </View>
+
         <View
           style={[
             lc.pill,
@@ -553,27 +627,58 @@ function ProCard({ theme }: { theme: any }) {
 
 const lc = StyleSheet.create({
   card: {
+    gap: T.s16,
+    padding: T.s16,
+    borderRadius: T.r20,
+    borderWidth: 1,
+  },
+  top: {
     flexDirection: "row",
     alignItems: "center",
     gap: T.s12,
-    paddingVertical: T.s14,
-    paddingHorizontal: T.s16,
-    borderRadius: T.r20,
-    borderWidth: StyleSheet.hairlineWidth,
   },
-  iconWrap: {
-    width: 40,
-    height: 40,
+  emblemWrap: {
+    width: 56,
+    height: 56,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  emblemRing: {
+    position: "absolute",
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    borderWidth: 1,
+  },
+  emblemCore: {
+    width: 42,
+    height: 42,
     borderRadius: T.r12,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
-    flexShrink: 0,
+    shadowOpacity: 0.5,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 5,
   },
-  label: {
-    fontSize: 15,
+  eyebrow: {
+    fontSize: 10,
     fontFamily: "Barlow-SemiBold",
-    letterSpacing: 0.1,
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+  },
+  title: {
+    fontSize: 19,
+    fontFamily: "BarlowCondensed-Bold",
+    letterSpacing: 0.4,
+  },
+  taglineAccent: {
+    width: 22,
+    height: 2,
+    borderRadius: 1,
+    marginTop: 3,
+    marginBottom: 3,
   },
   desc: {
     fontSize: 12,
@@ -581,16 +686,19 @@ const lc = StyleSheet.create({
     lineHeight: 16,
   },
   pill: {
-    paddingHorizontal: T.s10,
-    paddingVertical: T.s6,
-    borderRadius: T.r8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    alignSelf: "flex-start",
+    paddingHorizontal: T.s12,
+    paddingVertical: T.s8,
+    borderRadius: T.r24,
     borderWidth: 1,
-    flexShrink: 0,
   },
   pillText: {
-    fontSize: 9,
+    fontSize: 10,
     fontFamily: "Barlow-Bold",
-    letterSpacing: 1.2,
+    letterSpacing: 1,
     textTransform: "uppercase",
   },
 });
@@ -603,16 +711,18 @@ function TrialTierCard({
   now,
   onUpgrade,
   theme,
+  isDark,
 }: {
   trialExpiresAt: string;
   equipmentName: string;
   now: number;
   onUpgrade: () => void;
   theme: any;
+  isDark: boolean;
 }) {
   const msLeft = new Date(trialExpiresAt).getTime() - now;
   const daysLeft = Math.max(0, Math.floor(msLeft / 86_400_000));
-  const { color } = getTrialUrgency(msLeft, daysLeft);
+  const { color } = getTrialUrgency(msLeft, daysLeft, isDark);
   const label =
     daysLeft === 0 && msLeft > 0
       ? "Less than 1 day"
@@ -653,6 +763,7 @@ function TrialTierCard({
           <PressableScale onPress={onUpgrade}>
             <View style={[tc.cta, { backgroundColor: color }]}>
               <SPText style={[tc.ctaText, { color: "#fff" }]}>Upgrade</SPText>
+              <ChevronRight size={13} color="#fff" strokeWidth={2.5} />
             </View>
           </PressableScale>
         </View>
@@ -664,11 +775,13 @@ function TrialTierCard({
 function ExpiredTierCard({
   onUpgrade,
   theme,
+  isDark,
 }: {
   onUpgrade: () => void;
   theme: any;
+  isDark: boolean;
 }) {
-  const color = "#A855F7";
+  const color = isDark ? "#A855F7" : "#7E22CE";
   return (
     <SlideUp index={1}>
       <View
@@ -704,6 +817,7 @@ function ExpiredTierCard({
           <PressableScale onPress={onUpgrade}>
             <View style={[tc.cta, { backgroundColor: color }]}>
               <SPText style={[tc.ctaText, { color: "#fff" }]}>Upgrade</SPText>
+              <ChevronRight size={13} color="#fff" strokeWidth={2.5} />
             </View>
           </PressableScale>
         </View>
@@ -741,6 +855,7 @@ function StarterTierCard({
           <PressableScale onPress={onUpgrade}>
             <View style={[tc.cta, { backgroundColor: theme.accent }]}>
               <SPText style={[tc.ctaText, { color: theme.bg }]}>Go Pro</SPText>
+              <ChevronRight size={13} color={theme.bg} strokeWidth={2.5} />
             </View>
           </PressableScale>
         </View>
@@ -754,15 +869,19 @@ function CapTierCard({
   programCap,
   onUpgrade,
   theme,
+  isDark,
 }: {
   activeInstanceCount: number;
   programCap: number;
   onUpgrade: () => void;
   theme: any;
+  isDark: boolean;
 }) {
   const isFull = activeInstanceCount >= programCap;
   const ratio = Math.min(activeInstanceCount / programCap, 1);
-  const barColor = isFull ? "#EF4444" : "#F59E0B";
+  const dangerColor = isDark ? "#EF4444" : "#DC2626";
+  const warningColor = isDark ? "#F59E0B" : "#B45309";
+  const barColor = isFull ? dangerColor : warningColor;
   const slotsLeft = programCap - activeInstanceCount;
   return (
     <SlideUp index={1}>
@@ -770,8 +889,8 @@ function CapTierCard({
         style={[
           tc.card,
           {
-            backgroundColor: isFull ? "#EF444410" : theme.surface,
-            borderColor: isFull ? "#EF444430" : theme.border,
+            backgroundColor: isFull ? dangerColor + "10" : theme.surface,
+            borderColor: isFull ? dangerColor + "30" : theme.border,
           },
         ]}
       >
@@ -783,7 +902,7 @@ function CapTierCard({
           }}
         >
           <SPText
-            style={[tc.status, { color: isFull ? "#EF4444" : theme.text }]}
+            style={[tc.status, { color: isFull ? dangerColor : theme.text }]}
           >
             {activeInstanceCount} of {programCap} programs active
           </SPText>
@@ -851,17 +970,20 @@ const tc = StyleSheet.create({
     textTransform: "uppercase",
   },
   cta: {
-    paddingHorizontal: T.s16,
-    paddingVertical: T.s8,
-    borderRadius: T.r12,
+    flexDirection: "row",
     alignItems: "center",
+    gap: 4,
+    paddingHorizontal: T.s16,
+    paddingVertical: T.s10,
+    borderRadius: T.r24,
     justifyContent: "center",
     flexShrink: 0,
   },
   ctaText: {
     fontSize: 12,
     fontFamily: "Barlow-Bold",
-    letterSpacing: 0.3,
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
   },
   track: { height: 3, borderRadius: 2, overflow: "hidden" },
   fill: { height: 3, borderRadius: 2 },
@@ -949,8 +1071,14 @@ const cf = StyleSheet.create({
 
 // ─── Identity Badge ───────────────────────────────────────────────────────────
 
-function IdentityBadge({ identity }: { identity: Identity }) {
-  const meta = IDENTITY_META[identity];
+function IdentityBadge({
+  identity,
+  isDark,
+}: {
+  identity: Identity;
+  isDark: boolean;
+}) {
+  const meta = getIdentityMeta(identity, isDark);
   return (
     <View
       style={{
@@ -1045,6 +1173,7 @@ function ProgramCard({
   index,
   loading,
   theme,
+  isDark,
 }: {
   plan: WorkoutPlan;
   isActive: boolean;
@@ -1052,6 +1181,7 @@ function ProgramCard({
   index: number;
   loading?: boolean;
   theme: any;
+  isDark: boolean;
 }) {
   const { width } = useWindowDimensions();
   const isTablet = width >= 768;
@@ -1129,7 +1259,7 @@ function ProgramCard({
                 </SPText>
               </View>
               {plan.identityTarget && (
-                <IdentityBadge identity={plan.identityTarget} />
+                <IdentityBadge identity={plan.identityTarget} isDark={isDark} />
               )}
               <View style={pc.spacer} />
               <View style={[pc.arrowCircle, { borderColor: theme.border }]}>
@@ -1678,7 +1808,12 @@ function SectionLabel({ count, theme }: { count: number; theme: any }) {
 export function ProgramsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { theme } = useAppTheme();
+  const { theme, isDark } = useAppTheme();
+  // `T.s48 + insets.bottom` only ever accounted for the safe-area inset,
+  // not the floating SPTabBar's actual rendered height (its 90px container
+  // plus its own top margin and bottom gap), so content was running out
+  // from under it.
+  const tabBarHeight = useTabBarHeight();
 
   const [data, setData] = useState<ProgramsData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1838,7 +1973,7 @@ export function ProgramsScreen() {
         style={{ flex: 1 }}
         contentContainerStyle={{
           paddingHorizontal: T.s20,
-          paddingBottom: T.s48 + insets.bottom,
+          paddingBottom: tabBarHeight + T.s16,
           gap: T.s16,
         }}
         showsVerticalScrollIndicator={false}
@@ -1860,6 +1995,7 @@ export function ProgramsScreen() {
             identity={userIdentity}
             onViewSettings={handleViewIdentitySettings}
             theme={theme}
+            isDark={isDark}
           />
         ) : null}
 
@@ -1876,12 +2012,17 @@ export function ProgramsScreen() {
               now={now}
               onUpgrade={handleUpgrade}
               theme={theme}
+              isDark={isDark}
             />
           )}
 
         {(access.isEquipment && !hasActiveTrial && !access.isPro) ||
         (isExpiredTrial && !access.isEquipment) ? (
-          <ExpiredTierCard onUpgrade={handleUpgrade} theme={theme} />
+          <ExpiredTierCard
+            onUpgrade={handleUpgrade}
+            theme={theme}
+            isDark={isDark}
+          />
         ) : null}
 
         {isFreeStarter && (
@@ -1897,6 +2038,7 @@ export function ProgramsScreen() {
             programCap={access.programCap}
             onUpgrade={handleUpgrade}
             theme={theme}
+            isDark={isDark}
           />
         ) : null}
 
@@ -1944,6 +2086,7 @@ export function ProgramsScreen() {
                   index={i}
                   loading={activating === plan.id}
                   theme={theme}
+                  isDark={isDark}
                 />
               );
             })}

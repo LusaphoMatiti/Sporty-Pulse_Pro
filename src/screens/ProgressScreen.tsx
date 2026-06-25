@@ -40,6 +40,7 @@ import {
 
 import { colors, spacing, radii, borders, fonts, layout } from "../theme";
 import { useAppTheme } from "../theme/ThemeContext";
+import { useTabBarHeight } from "../hooks/Usetabbarheight";
 import { api } from "../lib/api";
 import type {
   UserPlan,
@@ -489,6 +490,11 @@ export function ProgressScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { theme, isDark } = useAppTheme();
+  // SPTabBar floats absolutely over content now, so this screen has to
+  // reserve its own bottom padding to clear it — the static `layout.tabBarHeight`
+  // this used to read from "../theme" was a frozen guess from before the
+  // bar floated and never matched the bar's real, safe-area-aware height.
+  const tabBarHeight = useTabBarHeight();
 
   const { width: screenWidth } = useWindowDimensions();
   const isNarrow = screenWidth < 400;
@@ -582,7 +588,10 @@ export function ProgressScreen() {
           style={styles.scroll}
           contentContainerStyle={[
             styles.content,
-            { paddingTop: insets.top + spacing[4] },
+            {
+              paddingTop: insets.top + spacing[4],
+              paddingBottom: tabBarHeight + spacing[8],
+            },
           ]}
           scrollEnabled={false}
           showsVerticalScrollIndicator={false}
@@ -726,7 +735,10 @@ export function ProgressScreen() {
         style={styles.scroll}
         contentContainerStyle={[
           styles.content,
-          { paddingTop: insets.top + spacing[4] },
+          {
+            paddingTop: insets.top + spacing[4],
+            paddingBottom: tabBarHeight + spacing[8],
+          },
         ]}
         showsVerticalScrollIndicator={false}
         refreshControl={
@@ -1249,7 +1261,6 @@ const styles = StyleSheet.create({
   scroll: { flex: 1 },
   content: {
     paddingHorizontal: layout.screenPaddingH,
-    paddingBottom: layout.tabBarHeight + spacing[8],
     gap: spacing[6],
   },
   loadingCenter: { flex: 1, alignItems: "center", justifyContent: "center" },

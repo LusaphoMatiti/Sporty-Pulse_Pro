@@ -15,6 +15,7 @@ import { SPIcon } from "../icons/SPIcon";
 import { MetricCard } from "./MatricCard";
 import { spacing, radii, borders } from "../../theme";
 import { useAppTheme } from "../../theme/ThemeContext";
+import { useTabBarHeight } from "../../hooks/Usetabbarheight";
 import type { SPUser } from "../../types/session";
 
 interface Day1HomeProps {
@@ -40,11 +41,18 @@ const WEEK_DAYS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
 export function Day1Home({ user, greeting, ctaCopy, subline }: Day1HomeProps) {
   const router = useRouter();
   const { theme } = useAppTheme();
+  // styles.content's old paddingBottom: spacing[8] was a flat 64px guess —
+  // it didn't actually know the floating SPTabBar's real height, which
+  // changes per-device based on safe-area insets.
+  const tabBarHeight = useTabBarHeight();
 
   return (
     <ScrollView
       style={[styles.scroll, { backgroundColor: theme.void }]}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[
+        styles.content,
+        { paddingBottom: tabBarHeight + spacing[3] },
+      ]}
       showsVerticalScrollIndicator={false}
     >
       {/* ── Greeting ── */}
@@ -502,7 +510,6 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: spacing[2], // 16 — standard padding
     paddingTop: spacing[6], // 48 — major section top
-    paddingBottom: spacing[8], // 64 — clears floating tab bar
     gap: spacing[3], // 24 — section spacing
   },
 

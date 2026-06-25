@@ -71,6 +71,14 @@ const ICONS: Record<TabKey, React.ComponentType<any>> = {
 
 const ANIM_DURATION = 220;
 
+// Layout constants — exported so other screens can compute the bar's
+// total footprint (see hooks/useTabBarHeight.ts) without hardcoding
+// these numbers a second time and silently drifting out of sync.
+export const TAB_BAR_CONTAINER_HEIGHT = 90;
+export const TAB_BAR_WRAPPER_MARGIN_TOP = 4;
+export const TAB_BAR_MIN_BOTTOM_INSET = 12;
+export const TAB_BAR_BOTTOM_GAP = 8;
+
 // ─── Single Tab Item ────────────────────────────────────────────────────────
 
 interface SPTabItemProps {
@@ -197,7 +205,8 @@ export function SPTabBar({ activeTab, onTabPress }: SPTabBarProps) {
   // The extra +8 is deliberate breathing room below the bar itself
   // (on top of whatever the device's safe area already requires) —
   // tune this single number to adjust the bottom gap.
-  const bottomInset = Math.max(insets.bottom, 12) + 8;
+  const bottomInset =
+    Math.max(insets.bottom, TAB_BAR_MIN_BOTTOM_INSET) + TAB_BAR_BOTTOM_GAP;
 
   // Surface overlay: dark theme's surface (#13171A) becomes the original
   // "rgba(19,23,26,0.92)" look; light theme's surface (#FFFFFF) becomes a
@@ -222,7 +231,7 @@ export function SPTabBar({ activeTab, onTabPress }: SPTabBarProps) {
         styles.wrapper,
         {
           marginHorizontal: horizontalMargin,
-          marginTop: 4,
+          marginTop: TAB_BAR_WRAPPER_MARGIN_TOP,
           paddingBottom: bottomInset,
           // Transparent on purpose — this wrapper is only spacing
           // (margin/padding) around the bar, not a painted surface.
@@ -271,7 +280,7 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: "row",
     alignItems: "stretch",
-    height: 90,
+    height: TAB_BAR_CONTAINER_HEIGHT,
     borderRadius: 34,
     borderWidth: 1,
     paddingVertical: 10,

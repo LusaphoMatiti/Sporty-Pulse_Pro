@@ -72,7 +72,9 @@ export interface SPButtonProps extends Omit<PressableProps, "style"> {
 
 /**
  * Heights are spec-locked: 48 / 52 / 56px.
- * Border-radius is clamped to 12–16px per spec.
+ * Border-radius is now a full pill (height / 2) on every variant,
+ * matching the onboarding slide 8 CTA — this supersedes the old
+ * 12–16px radius cap.
  * Font size scales with size but stays within the button variant of SPText.
  */
 const SIZE_CONFIG: Record<
@@ -87,19 +89,19 @@ const SIZE_CONFIG: Record<
   sm: {
     height: 48,
     paddingHorizontal: spacing[4],
-    borderRadius: 12,
+    borderRadius: 24,
     fontSize: 13,
   },
   md: {
     height: 52,
     paddingHorizontal: spacing[5],
-    borderRadius: 14,
+    borderRadius: 26,
     fontSize: 14,
   },
   lg: {
     height: 56,
     paddingHorizontal: spacing[6],
-    borderRadius: 16,
+    borderRadius: 28,
     fontSize: 15,
   },
 };
@@ -128,13 +130,16 @@ export function SPButton({
   // staying within the 48–56px spec window.
   const sizeStyles = useMemo(() => {
     const base = SIZE_CONFIG[size];
+    const height = rs(base.height, base.height + 2, base.height + 4);
     return {
-      height: rs(base.height, base.height + 2, base.height + 4),
+      height,
       paddingHorizontal: rs(
         base.paddingHorizontal,
         base.paddingHorizontal + spacing[1],
       ),
-      borderRadius: base.borderRadius,
+      // Full pill — always half the (responsive) height, so it stays
+      // perfectly rounded regardless of breakpoint.
+      borderRadius: height / 2,
       fontSize: rs(base.fontSize, base.fontSize + 1),
     };
   }, [size, rs]);
@@ -249,11 +254,34 @@ export function SPButton({
             {iconLeft}
             <SPText
               variant="button"
-              style={{ color: config.textColor, fontSize: sizeStyles.fontSize }}
+              style={{
+                color: config.textColor,
+                fontSize: sizeStyles.fontSize,
+                fontFamily: "Barlow-Bold",
+                letterSpacing: 1,
+                textTransform: "uppercase",
+              }}
             >
               {children}
             </SPText>
-            {iconRight}
+            {iconRight ? (
+              <View
+                style={[
+                  styles.iconCapsule,
+                  {
+                    width: sizeStyles.height * 0.5,
+                    height: sizeStyles.height * 0.5,
+                    borderRadius: sizeStyles.height * 0.25,
+                    // Translucent wash of the button's own text colour —
+                    // guarantees contrast against any variant's background
+                    // without hardcoding a colour per-variant.
+                    backgroundColor: config.textColor + "26", // ~15% opacity
+                  },
+                ]}
+              >
+                {iconRight}
+              </View>
+            ) : null}
           </View>
         )}
       </Pressable>
@@ -278,6 +306,10 @@ const styles = StyleSheet.create({
     // Single gap — removed the redundant iconLeft/iconRight margin wrappers
     // that were doubling up with this gap value
     gap: spacing[2],
+  },
+  iconCapsule: {
+    alignItems: "center",
+    justifyContent: "center",
   },
   disabled: { opacity: 0.38 },
 });

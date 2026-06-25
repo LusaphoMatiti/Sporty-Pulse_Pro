@@ -68,6 +68,7 @@ import { Day1Home } from "../components/home/Day1home";
 
 import { spacing, radii, borders, timing, spring } from "../theme";
 import { useAppTheme } from "../theme/ThemeContext";
+import { useTabBarHeight } from "../hooks/Usetabbarheight";
 import { api } from "../lib/api";
 import type { HomeData, SPUser } from "../types/session";
 import type { StreakDotDay } from "../components/home/Streakdotgrid";
@@ -1152,6 +1153,10 @@ export function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { theme } = useAppTheme();
   const rs = useResponsiveScale();
+  // SPTabBar floats absolutely over content now — rs.ctaBottomPadding was
+  // only ever sized for breathing room above the CTA, not for clearing
+  // the bar itself, so we add the bar's real, safe-area-aware height on top.
+  const tabBarHeight = useTabBarHeight();
 
   const greeting = useMemo(() => getGreeting(), []);
 
@@ -1221,11 +1226,17 @@ export function HomeScreen() {
   const scrollContentStyle = useMemo(
     () => ({
       paddingHorizontal: rs.screenPaddingH,
-      paddingBottom: rs.ctaBottomPadding,
+      paddingBottom: tabBarHeight + rs.ctaBottomPadding,
       paddingTop: insets.top + spacing[4],
       gap: rs.sectionGap,
     }),
-    [rs.screenPaddingH, rs.ctaBottomPadding, rs.sectionGap, insets.top],
+    [
+      rs.screenPaddingH,
+      rs.ctaBottomPadding,
+      rs.sectionGap,
+      insets.top,
+      tabBarHeight,
+    ],
   );
 
   // ── Loading ──

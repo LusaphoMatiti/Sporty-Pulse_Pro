@@ -29,6 +29,7 @@ import { SPText } from "../components/ui";
 import { SPButton } from "../components/ui";
 import { api, clearSessionToken } from "../lib/api";
 import { useAppTheme } from "../theme/ThemeContext";
+import { useTabBarHeight } from "../hooks/Usetabbarheight";
 import { SPIcon } from "../components/icons/SPIcon";
 import { SPSkeleton } from "../components/ui/SPSkeleton";
 import { fonts } from "../theme";
@@ -807,13 +808,20 @@ const sheetStyles = StyleSheet.create({
 function SettingsSkeleton() {
   const insets = useSafeAreaInsets();
   const { theme } = useAppTheme();
+  // mainStyles.content has no paddingBottom at all — without this, the
+  // skeleton (and the real screen below) render their last items
+  // underneath the floating SPTabBar.
+  const tabBarHeight = useTabBarHeight();
 
   return (
     <ScrollView
       style={{ flex: 1 }}
       contentContainerStyle={[
         mainStyles.content,
-        { paddingTop: insets.top + D.space.large },
+        {
+          paddingTop: insets.top + D.space.large,
+          paddingBottom: tabBarHeight + D.space.section,
+        },
       ]}
       scrollEnabled={false}
       showsVerticalScrollIndicator={false}
@@ -898,6 +906,7 @@ export function SettingsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { theme, isDark, toggleTheme } = useAppTheme();
+  const tabBarHeight = useTabBarHeight();
 
   const [data, setData] = useState<SettingsData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -965,7 +974,10 @@ export function SettingsScreen() {
         style={mainStyles.fill}
         contentContainerStyle={[
           mainStyles.content,
-          { paddingTop: insets.top + D.space.large },
+          {
+            paddingTop: insets.top + D.space.large,
+            paddingBottom: tabBarHeight + D.space.section,
+          },
         ]}
         showsVerticalScrollIndicator={false}
         refreshControl={

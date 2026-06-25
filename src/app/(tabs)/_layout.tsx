@@ -47,31 +47,35 @@ export default function TabLayout() {
   return (
     <View style={[styles.root, { backgroundColor: theme.void }]}>
       {/*
-        This wrapper is the fix: previously <Tabs> had no explicit flex
-        and SPTabBar was position:absolute, so SPTabBar floated ON TOP
-        of <Tabs> content instead of taking its own row underneath it.
-        Giving <Tabs> flex:1 here means it only fills the space that's
-        left ABOVE the tab bar — the tab bar now occupies a real row,
-        so screen content can never scroll underneath it.
+        Tabs now fills the entire root — no sibling wrapper carving out
+        space above the bar. Screen content extends full-bleed behind it.
       */}
-      <View style={styles.screenArea}>
-        <Tabs screenOptions={{ headerShown: false }} tabBar={() => null}>
-          <Tabs.Screen name="index" />
-          <Tabs.Screen name="training" />
-          <Tabs.Screen name="programs" />
-          <Tabs.Screen name="progress" />
-          <Tabs.Screen name="settings" />
-        </Tabs>
-      </View>
+      <Tabs screenOptions={{ headerShown: false }} tabBar={() => null}>
+        <Tabs.Screen name="index" />
+        <Tabs.Screen name="training" />
+        <Tabs.Screen name="programs" />
+        <Tabs.Screen name="progress" />
+        <Tabs.Screen name="settings" />
+      </Tabs>
 
-      <SPTabBar
-        activeTab={activeTab}
-        onTabPress={(tab) => {
-          if (tab.key === "home") router.navigate("/(tabs)" as any);
-          else if (tab.key === "training") handleTrainingPress();
-          else router.navigate(tab.href as any);
-        }}
-      />
+      {/*
+        SPTabBar is absolutely positioned over the content instead of
+        occupying its own row, so it floats on top of whatever is
+        scrolling underneath rather than reserving its own footprint.
+        pointerEvents="box-none" lets touches pass through the empty
+        margin area around the bar to the content below, while the
+        bar itself (and its buttons) still receives touches normally.
+      */}
+      <View style={styles.floatingTabBar} pointerEvents="box-none">
+        <SPTabBar
+          activeTab={activeTab}
+          onTabPress={(tab) => {
+            if (tab.key === "home") router.navigate("/(tabs)" as any);
+            else if (tab.key === "training") handleTrainingPress();
+            else router.navigate(tab.href as any);
+          }}
+        />
+      </View>
     </View>
   );
 }
@@ -80,7 +84,10 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
   },
-  screenArea: {
-    flex: 1,
+  floatingTabBar: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
 });

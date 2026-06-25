@@ -54,6 +54,7 @@ import {
   spring,
 } from "../theme";
 import { useAppTheme } from "../theme/ThemeContext";
+import { useTabBarHeight } from "../hooks/Usetabbarheight";
 import { api } from "../lib/api";
 import type {
   TrainingTier,
@@ -293,6 +294,11 @@ function ProgramsTab({
 }) {
   const { theme, isDark } = useAppTheme();
   const router = useRouter();
+  // This tab renders its own ScrollView directly under the floating
+  // SPTabBar (it's not nested inside another scroll container), so it
+  // needs to reserve the bar's real height itself or the last card
+  // renders underneath it.
+  const tabBarHeight = useTabBarHeight();
 
   const { planId, allPrograms, tier, activeEquipmentIds = [] } = data;
   const isPro = tier === "PRO";
@@ -314,7 +320,7 @@ function ProgramsTab({
   return (
     <ScrollView
       showsVerticalScrollIndicator={false}
-      contentContainerStyle={{ paddingBottom: rs(spacing[8]) }}
+      contentContainerStyle={{ paddingBottom: tabBarHeight + rs(spacing[8]) }}
     >
       {/* ── Hero Program ── */}
       {activeProgram && (
@@ -926,9 +932,15 @@ const LIBRARY_COLLECTIONS = [
 
 function LibraryTab({ data }: { data: TrainingData }) {
   const { theme } = useAppTheme();
+  // Same story as ProgramsTab — this is the actual content scrolling
+  // behind the floating SPTabBar, and it had no bottom padding at all.
+  const tabBarHeight = useTabBarHeight();
 
   return (
-    <ScrollView showsVerticalScrollIndicator={false}>
+    <ScrollView
+      showsVerticalScrollIndicator={false}
+      contentContainerStyle={{ paddingBottom: tabBarHeight + rs(spacing[8]) }}
+    >
       <View style={libStyles.section}>
         <View style={libStyles.sectionHeader}>
           <SPText style={[libStyles.sectionTitle, { color: theme.text }]}>
@@ -1640,6 +1652,7 @@ export function TrainingScreen() {
               .map((e) => [e.id, "" as number | ""]),
           );
           setWeights(base);
+          setNoPlan(false);
           setLoading(false);
         } else {
           await AsyncStorage.removeItem(CACHE_KEYS.training);
@@ -1675,6 +1688,7 @@ export function TrainingScreen() {
           .map((e) => [e.id, "" as number | ""]),
       );
       setWeights(base);
+      setNoPlan(false);
       setLoading(false);
       await AsyncStorage.setItem(CACHE_KEYS.training, JSON.stringify(d));
 
