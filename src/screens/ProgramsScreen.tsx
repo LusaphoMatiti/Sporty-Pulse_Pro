@@ -127,9 +127,12 @@ interface AccessContext {
   canStartNewProgram: boolean;
   activeInstanceCount: number;
   programCap: number | null;
+  canStartNewEquipmentProgram: boolean;
+  equipmentActiveCount: number;
+  equipmentCap: number | null;
   activeEquipmentIds: string[];
   expiredEquipmentIds: string[];
-  activePlanId: string | null;
+  activePlanIds: string[];
   declaredEquipmentIds: string[];
 }
 
@@ -284,21 +287,38 @@ function getLockReason(
   access: AccessContext,
 ): LockReason | null {
   if (access.isPro) return null;
-  if (!plan.requiresEquipment) return null;
-  if (access.isEquipment) {
-    if (!access.canStartNewProgram && access.activePlanId !== plan.id)
-      return "cap_reached";
-    return null;
+
+  const isActivePlan = access.activePlanIds.includes(plan.id);
+
+  if (!plan.requiresEquipment) {
+    // Bodyweight library — capped at 4 concurrently active programs for
+    // every non-Pro tier (free starter, equipment trial, purchased
+    // equipment). A program you're already training never locks just
+    // because you're at the cap.
+    if (isActivePlan) return null;
+    return access.canStartNewProgram ? null : "cap_reached";
   }
+
+  // Equipment-requiring plan.
+  if (access.isEquipment) {
+    // Purchased equipment — unlimited for the equipment they own.
+    if (isActivePlan) return null;
+    return access.canStartNewEquipmentProgram ? null : "cap_reached";
+  }
+
   const hasDeclared = access.declaredEquipmentIds.length > 0;
   if (hasDeclared) {
     if (access.hasActiveTrial) {
-      if (!access.canStartNewProgram && access.activePlanId !== plan.id)
-        return "cap_reached";
-      return null;
+      // Trial tier — capped at 2 concurrently active equipment programs.
+      if (isActivePlan) return null;
+      return access.canStartNewEquipmentProgram ? null : "cap_reached";
     }
+    // Trial has ended — lock equipment programs even if one is still
+    // marked ACTIVE from before expiry. This intentionally does NOT check
+    // isActivePlan: expiry must re-lock programs you were already running.
     return "trial_expired";
   }
+
   return "upgrade_required";
 }
 
@@ -2081,7 +2101,7 @@ export function ProgramsScreen() {
                 <ProgramCard
                   key={plan.id}
                   plan={plan}
-                  isActive={access.activePlanId === plan.id}
+                  isActive={access.activePlanIds.includes(plan.id)}
                   onPress={() => handlePlanPress(plan)}
                   index={i}
                   loading={activating === plan.id}
