@@ -15,10 +15,19 @@ function getActiveTab(segments: string[]): TabKey {
   return "home";
 }
 
+// The active workout session ("/(tabs)/training/session/[instanceId]/[sessionNumber]")
+// is still nested under this (tabs) group, so it renders through this same
+// layout — it just isn't a screen that should show the bottom tab bar at all
+// (full-screen workout flow, not a place you tab away from mid-set).
+function isSessionScreen(segments: string[]): boolean {
+  return segments.includes("session");
+}
+
 export default function TabLayout() {
   const router = useRouter();
   const segments = useSegments();
   const activeTab = getActiveTab(segments);
+  const hideTabBar = isSessionScreen(segments);
   // FIX: this used to be `colors.void` from a static "../../theme" import —
   // a plain object resolved once at import time, with no connection to
   // ThemeContext. It never updated with isDark, which is why the root
@@ -65,17 +74,22 @@ export default function TabLayout() {
         pointerEvents="box-none" lets touches pass through the empty
         margin area around the bar to the content below, while the
         bar itself (and its buttons) still receives touches normally.
+        Hidden entirely on the session screen — mid-workout shouldn't
+        expose a way to tab away, and the bar would just sit on top of
+        the session UI's own controls.
       */}
-      <View style={styles.floatingTabBar} pointerEvents="box-none">
-        <SPTabBar
-          activeTab={activeTab}
-          onTabPress={(tab) => {
-            if (tab.key === "home") router.navigate("/(tabs)" as any);
-            else if (tab.key === "training") handleTrainingPress();
-            else router.navigate(tab.href as any);
-          }}
-        />
-      </View>
+      {!hideTabBar && (
+        <View style={styles.floatingTabBar} pointerEvents="box-none">
+          <SPTabBar
+            activeTab={activeTab}
+            onTabPress={(tab) => {
+              if (tab.key === "home") router.navigate("/(tabs)" as any);
+              else if (tab.key === "training") handleTrainingPress();
+              else router.navigate(tab.href as any);
+            }}
+          />
+        </View>
+      )}
     </View>
   );
 }

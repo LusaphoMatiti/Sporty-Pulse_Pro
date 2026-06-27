@@ -861,7 +861,11 @@ const programStyles = StyleSheet.create({
     gap: rs(spacing[3]),
   },
   sessionThumb: {
-    width: rs(80),
+    // 4:3 to match the `thumb` Cloudinary preset (200x150) used in
+    // /api/training for exercisesForView[].exercise.thumbnailUrl — the same
+    // field also feeds `exerciseThumb` below at a 150:110 (4:3) ratio, so
+    // this box needs to match that ratio rather than be square.
+    width: rs(106),
     height: rs(80),
     borderRadius: rs(16),
     backgroundColor: "#0C0E10",
