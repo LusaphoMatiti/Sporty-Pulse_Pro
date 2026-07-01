@@ -19,7 +19,7 @@ import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useRouter, useFocusEffect } from "expo-router";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -404,8 +404,8 @@ function WorkoutCompleteOverlay({
           </View>
 
           {/* Copy */}
-          <SPText style={[wc.title, { color: theme.text }]}>Great Job.</SPText>
-          <SPText style={[wc.subtitle, { color: theme.muted2 }]}>
+          <SPText style={[wc.title, { color: "#F0EDE4" }]}>Great Job.</SPText>
+          <SPText style={[wc.subtitle, { color: "#9A9A90" }]}>
             You completed today's workout
           </SPText>
 
@@ -413,44 +413,56 @@ function WorkoutCompleteOverlay({
           <Animated.View style={[wc.metrics, metricsStyle]}>
             <View style={wc.metricItem}>
               <Clock size={13} color={accentColor} strokeWidth={1.8} />
-              <SPText style={[wc.metricValue, { color: theme.text }]}>
+              <SPText style={[wc.metricValue, { color: "#F0EDE4" }]}>
                 {timeStr}
               </SPText>
-              <SPText style={[wc.metricLabel, { color: theme.muted }]}>
+              <SPText style={[wc.metricLabel, { color: "#9A9A90" }]}>
                 WORKOUT
               </SPText>
             </View>
 
-            <View style={[wc.metricSep, { backgroundColor: theme.border }]} />
+            <View
+              style={[
+                wc.metricSep,
+                { backgroundColor: "rgba(255,255,255,0.08)" },
+              ]}
+            />
 
             <View style={wc.metricItem}>
               <Check size={13} color={accentColor} strokeWidth={1.8} />
-              <SPText style={[wc.metricValue, { color: theme.text }]}>
+              <SPText style={[wc.metricValue, { color: "#F0EDE4" }]}>
                 {displayPct}%
               </SPText>
-              <SPText style={[wc.metricLabel, { color: theme.muted }]}>
+              <SPText style={[wc.metricLabel, { color: "#9A9A90" }]}>
                 DONE
               </SPText>
             </View>
 
-            <View style={[wc.metricSep, { backgroundColor: theme.border }]} />
+            <View
+              style={[
+                wc.metricSep,
+                { backgroundColor: "rgba(255,255,255,0.08)" },
+              ]}
+            />
 
             <View style={wc.metricItem}>
               <Flame size={13} color={accentColor} strokeWidth={1.8} />
-              <SPText style={[wc.metricValue, { color: theme.text }]}>
+              <SPText style={[wc.metricValue, { color: "#F0EDE4" }]}>
                 Day {dayNumber}
               </SPText>
-              <SPText style={[wc.metricLabel, { color: theme.muted }]}>
+              <SPText style={[wc.metricLabel, { color: "#9A9A90" }]}>
                 SESSION
               </SPText>
             </View>
           </Animated.View>
 
           {/* Divider */}
-          <View style={[wc.divider, { backgroundColor: theme.border }]} />
+          <View
+            style={[wc.divider, { backgroundColor: "rgba(255,255,255,0.08)" }]}
+          />
 
           {/* Motivational quote */}
-          <SPText style={[wc.quote, { color: theme.muted }]}>{quote}</SPText>
+          <SPText style={[wc.quote, { color: "#6B6B62" }]}>{quote}</SPText>
         </Animated.View>
 
         {/* CTA + secondary */}
@@ -459,14 +471,14 @@ function WorkoutCompleteOverlay({
             onPress={onContinue}
             style={[wc.cta, { backgroundColor: accentColor }]}
           >
-            <SPText style={[wc.ctaText, { color: theme.bg }]}>CONTINUE</SPText>
+            <SPText style={[wc.ctaText, { color: "#0A0A0A" }]}>CONTINUE</SPText>
           </PressableScale>
           <Pressable
             onPress={onViewSummary}
             hitSlop={12}
             style={wc.secondaryBtn}
           >
-            <SPText style={[wc.secondaryText, { color: theme.muted2 }]}>
+            <SPText style={[wc.secondaryText, { color: "#9A9A90" }]}>
               View Session Summary
             </SPText>
           </Pressable>
@@ -1591,11 +1603,26 @@ export default function SessionScreen({
 
   const [showCompletion, setShowCompletion] = useState(false);
   const completionSecondsRef = useRef(0);
+  // Prevents onSessionEnd firing more than once per session lifecycle.
+  const hasEndedRef = useRef(false);
+
+  // useFocusEffect runs every time the screen gains navigation focus.
+  // Expo Router keeps tab-nested screens MOUNTED when you navigate away —
+  // this is why showCompletion was persisting. Resetting here is the correct
+  // lifecycle hook for Expo Router: it fires when the screen is about to be
+  // shown, guaranteeing clean state for every new session visit.
+  useFocusEffect(
+    useCallback(() => {
+      setShowCompletion(false);
+      hasEndedRef.current = false;
+    }, []),
+  );
 
   const onSessionEnd = useCallback(() => {
+    if (hasEndedRef.current) return;
+    hasEndedRef.current = true;
     completionSecondsRef.current = secondsRef.current;
     setShowCompletion(true);
-    // Timer keeps value frozen — we already have the snapshot in ref
   }, []);
 
   const session = useSessionState({
