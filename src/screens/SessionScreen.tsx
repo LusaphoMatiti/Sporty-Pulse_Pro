@@ -1,3 +1,9 @@
+/**
+ * SessionScreen — Active workout session UI (Redesigned)
+ *
+ * Route: app/(tabs)/training/session/[instanceId]/[sessionNumber].tsx
+ */
+
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   View,
@@ -6,9 +12,9 @@ import {
   StyleSheet,
   StyleProp,
   ViewStyle,
-  Image,
   Dimensions,
 } from "react-native";
+import { Image } from "expo-image";
 import {
   SafeAreaView,
   useSafeAreaInsets,
@@ -25,6 +31,7 @@ import Animated, {
   FadeInDown,
 } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   SkipBack,
   SkipForward,
@@ -148,6 +155,38 @@ function muscleToIcon(muscles: string[] | undefined): IconName {
 // Any touch anywhere resets the timer and exits flow mode.
 
 const FLOW_TIMEOUT_MS = 120_000;
+
+// Must match the key written by TrainingScreen
+const SP_EXERCISE_THUMBNAILS_KEY = "sp_exercise_thumbnails_v1";
+
+// ─── Cloudinary client-side URL resizer ───────────────────────────────────────
+// Pure string manipulation — no server imports, no cloudinary SDK.
+// Swaps the transform segment in a stored Cloudinary URL so each slot
+// gets the right resolution and crop without any backend changes.
+//
+// Input:  https://res.cloudinary.com/.../upload/w_400,h_300,c_fit,.../<publicId>
+// Output: https://res.cloudinary.com/.../upload/<newTransform>/<publicId>
+
+const CL = {
+  videoCard: "w_1200,h_675,c_fill,f_auto,q_auto", // 16:9, crisp on 3× DPR
+  flowMode: "w_1080,h_1350,c_fill,f_auto,q_auto", // portrait fullscreen
+  upNext: "w_400,h_320,c_fill,f_auto,q_auto", // 110×90 card slot
+} as const;
+
+function cloudinaryResize(
+  url: string | null | undefined,
+  transform: string,
+): string | undefined {
+  if (!url?.includes("res.cloudinary.com/")) return url ?? undefined;
+  const uploadIdx = url.indexOf("/upload/");
+  if (uploadIdx === -1) return url;
+  const base = url.slice(0, uploadIdx + "/upload/".length);
+  const after = url.slice(uploadIdx + "/upload/".length);
+  // Strip the existing transform (everything before the first "/")
+  const slashIdx = after.indexOf("/");
+  if (slashIdx === -1) return `${base}${transform}/${after}`;
+  return `${base}${transform}/${after.slice(slashIdx + 1)}`;
+}
 
 function useFlowMode(timeoutMs = FLOW_TIMEOUT_MS) {
   const [isFlowMode, setIsFlowMode] = useState(false);
@@ -336,10 +375,12 @@ function ExerciseHeader({
 
 function VideoPlayerCard({
   durationSeconds = 180,
+  thumbnailUrl,
   onHideVideo,
   rs,
 }: {
   durationSeconds?: number;
+  thumbnailUrl?: string | null;
   onHideVideo?: () => void;
   rs: (...args: number[]) => number;
 }) {
@@ -419,8 +460,16 @@ function VideoPlayerCard({
     >
       {/* Thumbnail area — tapping anywhere brings controls back */}
       <Pressable style={s.videoThumb} onPress={showControls}>
-        {/* Dark placeholder — swap for real Video component */}
-        <View style={s.videoThumbInner} />
+        {/* Thumbnail — fills behind controls; swap for Video component when ready */}
+        {thumbnailUrl ? (
+          <Image
+            source={cloudinaryResize(thumbnailUrl, CL.videoCard) ?? undefined}
+            style={s.videoThumbInner}
+            contentFit="cover"
+          />
+        ) : (
+          <View style={s.videoThumbInner} />
+        )}
 
         {/* Top-right: hide video */}
         <Animated.View
@@ -635,7 +684,7 @@ function PipOverlay({
       </Pressable>
 
       <Pressable style={s.pipCloseBtn} onPress={onClose} hitSlop={8}>
-        <X size={14} color="#fff" strokeWidth={2.4} />
+        <X size={12} color="#fff" strokeWidth={2.4} />
       </Pressable>
 
       <View style={s.pipFooter} pointerEvents="box-none">
@@ -645,9 +694,9 @@ function PipOverlay({
         <View style={s.pipControls}>
           <Pressable onPress={onTogglePause} hitSlop={6}>
             {paused ? (
-              <Play size={16} color="#fff" fill="#fff" strokeWidth={0} />
+              <Play size={13} color="#fff" fill="#fff" strokeWidth={0} />
             ) : (
-              <Pause size={16} color="#fff" fill="#fff" strokeWidth={0} />
+              <Pause size={13} color="#fff" fill="#fff" strokeWidth={0} />
             )}
           </Pressable>
         </View>
@@ -669,6 +718,7 @@ function FlowModeOverlay({
   focus,
   exerciseName,
   workoutTime,
+  thumbnailUrl,
   accentColor,
   onTap,
   onPip,
@@ -681,6 +731,7 @@ function FlowModeOverlay({
   focus: string;
   exerciseName: string;
   workoutTime: string;
+  thumbnailUrl?: string | null;
   accentColor: string;
   onTap: () => void;
   onPip: () => void;
@@ -801,9 +852,18 @@ function FlowModeOverlay({
 
         {/* Cinematic video area — fills remaining height */}
         <View style={fm.videoWrap} pointerEvents="box-none">
-          {/* Video placeholder (swap with expo-av Video component) */}
           <View style={[fm.videoFill, { backgroundColor: "#090b0c" }]}>
-            {/* Bottom vignette — no LinearGradient dep */}
+            {/* Thumbnail — fills the cinematic area while video isn't available */}
+            {thumbnailUrl ? (
+              <Image
+                source={
+                  cloudinaryResize(thumbnailUrl, CL.flowMode) ?? undefined
+                }
+                style={StyleSheet.absoluteFillObject}
+                contentFit="cover"
+              />
+            ) : null}
+            {/* Bottom vignette sits on top of image */}
             <View style={fm.videoVignette} />
           </View>
 
@@ -936,11 +996,13 @@ function MetricsCard({
 function UpNextCard({
   exerciseName,
   equipment,
+  thumbnailUrl,
   accentColor,
   rs,
 }: {
   exerciseName: string;
   equipment?: string;
+  thumbnailUrl?: string | null;
   accentColor: string;
   rs: (...args: number[]) => number;
 }) {
@@ -953,7 +1015,17 @@ function UpNextCard({
         ]}
       >
         {/* Thumbnail */}
-        <View style={[s.upNextThumb, { backgroundColor: darkTheme.raised }]} />
+        {thumbnailUrl ? (
+          <Image
+            source={cloudinaryResize(thumbnailUrl, CL.upNext) ?? undefined}
+            style={s.upNextThumb}
+            contentFit="cover"
+          />
+        ) : (
+          <View
+            style={[s.upNextThumb, { backgroundColor: darkTheme.raised }]}
+          />
+        )}
 
         {/* Info */}
         <View style={s.upNextInfo}>
@@ -1247,6 +1319,23 @@ export default function SessionScreen({
     session.initWeights();
   }, [instanceId]);
 
+  // ── Thumbnail map — loaded from the cache TrainingScreen writes ─────────────
+  // exercisesForView on TrainingScreen has thumbnailUrl; ExerciseForSession
+  // (from the session API) doesn't. We bridge the gap via AsyncStorage.
+
+  const [thumbnailMap, setThumbnailMap] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    AsyncStorage.getItem(SP_EXERCISE_THUMBNAILS_KEY)
+      .then((raw) => {
+        if (raw) setThumbnailMap(JSON.parse(raw) as Record<string, string>);
+      })
+      .catch(() => {});
+  }, []);
+
+  const thumbFor = (exerciseId: string): string | null =>
+    thumbnailMap[exerciseId] ?? null;
+
   useEffect(() => {
     if (!restTimer.resting && session.phase === "resting") {
       session.onRestEnd();
@@ -1370,7 +1459,13 @@ export default function SessionScreen({
               rs={rs}
             />
           ) : (
-            <VideoPlayerCard onHideVideo={() => setVideoHidden(true)} rs={rs} />
+            <VideoPlayerCard
+              thumbnailUrl={
+                currentExView ? thumbFor(currentExView.exercise.id) : null
+              }
+              onHideVideo={() => setVideoHidden(true)}
+              rs={rs}
+            />
           )}
 
           {/* 4 — Metrics */}
@@ -1387,6 +1482,7 @@ export default function SessionScreen({
             <UpNextCard
               exerciseName={nextExView.exercise.name}
               equipment={nextExView.exercise.equipment?.name ?? undefined}
+              thumbnailUrl={thumbFor(nextExView.exercise.id)}
               accentColor={accentColor}
               rs={rs}
             />
@@ -1458,6 +1554,9 @@ export default function SessionScreen({
         focus={focus}
         exerciseName={currentExView?.exercise.name ?? ""}
         workoutTime={workoutTime}
+        thumbnailUrl={
+          currentExView ? thumbFor(currentExView.exercise.id) : null
+        }
         accentColor={accentColor}
         onTap={resetFlow}
         onPip={() => {
@@ -1692,17 +1791,17 @@ const s = StyleSheet.create({
     position: "absolute",
     top: 56,
     right: 16,
-    width: 220,
-    height: 148,
-    borderRadius: 20,
+    width: 132,
+    height: 88,
+    borderRadius: 16,
     borderWidth: 1,
     overflow: "hidden",
     zIndex: 200,
     shadowColor: "#000",
-    shadowOpacity: 0.5,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 24,
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 20,
   },
   pipThumb: {
     flex: 1,
@@ -1710,12 +1809,12 @@ const s = StyleSheet.create({
   },
   pipCloseBtn: {
     position: "absolute",
-    top: 8,
-    right: 8,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: "rgba(0,0,0,0.62)",
+    top: 6,
+    right: 6,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: "rgba(0,0,0,0.55)",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1727,15 +1826,15 @@ const s = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    backgroundColor: "rgba(0,0,0,0.60)",
-    gap: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    gap: 6,
   },
   pipName: {
     flex: 1,
     color: "#fff",
-    fontSize: 12,
+    fontSize: 10,
     fontFamily: fonts.brandMedium,
   },
   pipControls: {

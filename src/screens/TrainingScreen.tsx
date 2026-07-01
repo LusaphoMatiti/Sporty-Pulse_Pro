@@ -69,6 +69,9 @@ import type {
 
 const { width: SCREEN_W } = Dimensions.get("window");
 
+// Shared with SessionScreen — exercise thumbnails cached by exercise ID
+export const SP_EXERCISE_THUMBNAILS_KEY = "sp_exercise_thumbnails_v1";
+
 function buildScale(): number {
   const BASE = 390;
   const raw = SCREEN_W / BASE;
@@ -1718,6 +1721,16 @@ export function TrainingScreen() {
           setWeights(base);
           setNoPlan(false);
           setLoading(false);
+          // Keep thumbnail map fresh so SessionScreen can read it immediately
+          const thumbMap: Record<string, string> = {};
+          for (const e of parsed.exercisesForView) {
+            if (e.exercise.thumbnailUrl)
+              thumbMap[e.exercise.id] = e.exercise.thumbnailUrl;
+          }
+          AsyncStorage.setItem(
+            SP_EXERCISE_THUMBNAILS_KEY,
+            JSON.stringify(thumbMap),
+          ).catch(() => {});
         } else {
           await AsyncStorage.removeItem(CACHE_KEYS.training);
           setLoading(true);
@@ -1755,6 +1768,17 @@ export function TrainingScreen() {
       setNoPlan(false);
       setLoading(false);
       await AsyncStorage.setItem(CACHE_KEYS.training, JSON.stringify(d));
+
+      // Write exercise thumbnail map for SessionScreen to consume
+      const thumbMap: Record<string, string> = {};
+      for (const e of d.exercisesForView) {
+        if (e.exercise.thumbnailUrl)
+          thumbMap[e.exercise.id] = e.exercise.thumbnailUrl;
+      }
+      await AsyncStorage.setItem(
+        SP_EXERCISE_THUMBNAILS_KEY,
+        JSON.stringify(thumbMap),
+      );
 
       const urlsToPrefetch = [
         d.imageUrl,

@@ -85,6 +85,7 @@ export interface ExerciseForSession {
     id: string;
     name: string;
     musclesWorked: string[];
+    thumbnailUrl?: string | null;
     equipment?: { id: string; name: string } | null;
   };
 }
