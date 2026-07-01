@@ -25,6 +25,7 @@ import Animated, {
   useAnimatedStyle,
   withSpring,
   withTiming,
+  withDelay,
   withRepeat,
   withSequence,
   FadeIn,
@@ -48,9 +49,12 @@ import {
   PictureInPicture2,
   X,
   Hand,
+  Clock,
+  Flame,
 } from "lucide-react-native";
 
 import { useAppTheme } from "../theme/ThemeContext";
+import type { AppTheme } from "../theme/ThemeContext";
 import { useResponsive } from "../hooks/useResponsive";
 import { SPText } from "../components/ui/SPText";
 import { SPIcon } from "../components/icons/SPIcon";
@@ -68,20 +72,6 @@ import type { IconName } from "../components/icons/SPIcon";
 // ─── Theme ────────────────────────────────────────────────────────────────────
 
 const { height: SCREEN_H } = Dimensions.get("window");
-
-const darkTheme = {
-  bg: "#0C0E10",
-  surface: "#13171A",
-  surface2: "#1A1F23",
-  border: "rgba(255,255,255,0.07)",
-  text: "#F0EDE4",
-  muted: "#6B6B62",
-  muted2: "#9A9A90",
-  accent: "#C8F135",
-  accentDim: "rgba(200,241,53,0.10)",
-  void: "#0A0A0A",
-  raised: "#1E1E1E",
-};
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -147,6 +137,343 @@ const MUSCLE_ICON_MAP: Record<string, IconName> = {
 function muscleToIcon(muscles: string[] | undefined): IconName {
   if (!muscles || muscles.length === 0) return "training";
   return MUSCLE_ICON_MAP[muscles[0]] ?? "training";
+}
+
+// ─── Workout Completion ────────────────────────────────────────────────────────
+
+const COMPLETION_QUOTES = [
+  "Consistency compounds.",
+  "Momentum beats motivation.",
+  "Your future self noticed.",
+  "Small wins become identity.",
+  "Progress happened today.",
+] as const;
+
+// Fixed particle positions — deterministic, no Math.random at render time
+const PARTICLES = [
+  { x: -88, y: -135, size: 3, delay: 160 },
+  { x: 80, y: -115, size: 2, delay: 300 },
+  { x: -132, y: -18, size: 2, delay: 140 },
+  { x: 124, y: 12, size: 3, delay: 360 },
+  { x: -64, y: 128, size: 2, delay: 240 },
+  { x: 88, y: 104, size: 2, delay: 290 },
+  { x: 14, y: -152, size: 3, delay: 200 },
+  { x: -108, y: -68, size: 2, delay: 420 },
+] as const;
+
+function CompletionParticle({
+  x,
+  y,
+  size,
+  delay,
+  color,
+  visible,
+}: {
+  x: number;
+  y: number;
+  size: number;
+  delay: number;
+  color: string;
+  visible: boolean;
+}) {
+  const opacity = useSharedValue(0);
+  const translateY = useSharedValue(0);
+
+  useEffect(() => {
+    if (!visible) return;
+    opacity.value = withDelay(
+      delay,
+      withSequence(
+        withTiming(0.55, { duration: 420 }),
+        withDelay(480, withTiming(0, { duration: 700 })),
+      ),
+    );
+    translateY.value = withDelay(delay, withTiming(-22, { duration: 1600 }));
+  }, [visible]);
+
+  const style = useAnimatedStyle(() => ({
+    opacity: opacity.value,
+    transform: [{ translateY: translateY.value }],
+  }));
+
+  return (
+    <Animated.View
+      style={[
+        style,
+        {
+          position: "absolute",
+          top: "50%",
+          left: "50%",
+          marginLeft: x,
+          marginTop: y,
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          backgroundColor: color,
+        },
+      ]}
+    />
+  );
+}
+
+// ─── WorkoutCompleteOverlay ────────────────────────────────────────────────────
+
+function WorkoutCompleteOverlay({
+  visible,
+  workoutSeconds,
+  dayNumber,
+  accentColor,
+  onContinue,
+  onViewSummary,
+}: {
+  visible: boolean;
+  workoutSeconds: number;
+  dayNumber: number;
+  accentColor: string;
+  onContinue: () => void;
+  onViewSummary: () => void;
+}) {
+  const { theme } = useAppTheme();
+  const insets = useSafeAreaInsets();
+
+  // ── Animated values ────────────────────────────────────────────────────────
+  const backdropOpacity = useSharedValue(0);
+  const cardY = useSharedValue(72);
+  const cardOpacity = useSharedValue(0);
+  const ringScale = useSharedValue(0);
+  const checkOpacity = useSharedValue(0);
+  const glowOpacity = useSharedValue(0);
+  const glowScale = useSharedValue(0.85);
+  const metricsOpacity = useSharedValue(0);
+  const ctaOpacity = useSharedValue(0);
+  const ctaTranslateY = useSharedValue(18);
+
+  // ── Count-up state ─────────────────────────────────────────────────────────
+  const [displaySec, setDisplaySec] = useState(0);
+  const [displayPct, setDisplayPct] = useState(0);
+
+  useEffect(() => {
+    if (!visible) return;
+    setDisplaySec(0);
+    setDisplayPct(0);
+
+    // 1 — backdrop fades in
+    backdropOpacity.value = withTiming(1, { duration: 380 });
+
+    // 2 — card slides up
+    cardOpacity.value = withTiming(1, { duration: 300 });
+    cardY.value = withSpring(0, { damping: 24, stiffness: 240, mass: 0.85 });
+
+    // 3 — ring expands + glow pulses twice
+    ringScale.value = withDelay(
+      260,
+      withSpring(1, { damping: 16, stiffness: 230 }),
+    );
+    glowOpacity.value = withDelay(320, withTiming(1, { duration: 280 }));
+    glowScale.value = withDelay(
+      320,
+      withRepeat(
+        withSequence(
+          withTiming(1.18, { duration: 950 }),
+          withTiming(0.92, { duration: 950 }),
+        ),
+        2,
+        false,
+      ),
+    );
+
+    // 4 — check mark appears
+    checkOpacity.value = withDelay(540, withTiming(1, { duration: 260 }));
+
+    // 5 — metrics fade in
+    metricsOpacity.value = withDelay(660, withTiming(1, { duration: 320 }));
+
+    // 6 — CTA rises up last
+    ctaOpacity.value = withDelay(920, withTiming(1, { duration: 360 }));
+    ctaTranslateY.value = withDelay(
+      920,
+      withSpring(0, { damping: 20, stiffness: 200 }),
+    );
+
+    // Count-up (ease-out cubic over 920ms)
+    const t0 = Date.now();
+    const countMs = 920;
+    const interval = setInterval(() => {
+      const t = Math.min((Date.now() - t0) / countMs, 1);
+      const eased = 1 - Math.pow(1 - t, 3);
+      setDisplaySec(Math.round(eased * workoutSeconds));
+      setDisplayPct(Math.round(eased * 100));
+      if (t >= 1) clearInterval(interval);
+    }, 16);
+
+    return () => clearInterval(interval);
+  }, [visible]);
+
+  const backdropStyle = useAnimatedStyle(() => ({
+    opacity: backdropOpacity.value,
+  }));
+  const cardStyle = useAnimatedStyle(() => ({
+    opacity: cardOpacity.value,
+    transform: [{ translateY: cardY.value }],
+  }));
+  const ringStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: ringScale.value }],
+  }));
+  const checkStyle = useAnimatedStyle(() => ({ opacity: checkOpacity.value }));
+  const glowStyle = useAnimatedStyle(() => ({
+    opacity: glowOpacity.value,
+    transform: [{ scale: glowScale.value }],
+  }));
+  const metricsStyle = useAnimatedStyle(() => ({
+    opacity: metricsOpacity.value,
+  }));
+  const ctaStyle = useAnimatedStyle(() => ({
+    opacity: ctaOpacity.value,
+    transform: [{ translateY: ctaTranslateY.value }],
+  }));
+
+  const quote = COMPLETION_QUOTES[dayNumber % COMPLETION_QUOTES.length];
+  const dispMins = Math.floor(displaySec / 60);
+  const dispSecs = displaySec % 60;
+  const timeStr = `${String(dispMins).padStart(2, "0")}:${String(dispSecs).padStart(2, "0")}`;
+
+  if (!visible) return null;
+
+  return (
+    <View style={[StyleSheet.absoluteFillObject, wc.root]} pointerEvents="auto">
+      {/* Dark backdrop — animates separately so card stays fully opaque */}
+      <Animated.View
+        style={[StyleSheet.absoluteFillObject, wc.backdrop, backdropStyle]}
+        pointerEvents="none"
+      />
+
+      {/* Particles — tied to backdrop fade */}
+      <Animated.View
+        style={[StyleSheet.absoluteFillObject, backdropStyle]}
+        pointerEvents="none"
+      >
+        {PARTICLES.map((p, i) => (
+          <CompletionParticle
+            key={i}
+            x={p.x}
+            y={p.y}
+            size={p.size}
+            delay={p.delay}
+            color={accentColor}
+            visible={visible}
+          />
+        ))}
+      </Animated.View>
+
+      {/* Card + CTA */}
+      <View
+        style={[
+          wc.sheetWrap,
+          { paddingBottom: Math.max(insets.bottom, 20) + 12 },
+        ]}
+        pointerEvents="box-none"
+      >
+        {/* Reward card */}
+        <Animated.View style={[wc.card, cardStyle]}>
+          {/* Success ring */}
+          <View style={wc.ringWrap}>
+            <Animated.View
+              style={[
+                wc.glowOuter,
+                { backgroundColor: `${accentColor}09` },
+                glowStyle,
+              ]}
+            />
+            <Animated.View
+              style={[
+                wc.glowInner,
+                { backgroundColor: `${accentColor}15` },
+                glowStyle,
+              ]}
+            />
+            <Animated.View
+              style={[wc.ring, { borderColor: accentColor }, ringStyle]}
+            >
+              <View
+                style={[wc.ringFill, { backgroundColor: `${accentColor}0D` }]}
+              />
+              <Animated.View style={checkStyle}>
+                <Check size={36} color={accentColor} strokeWidth={1.5} />
+              </Animated.View>
+            </Animated.View>
+          </View>
+
+          {/* Copy */}
+          <SPText style={[wc.title, { color: theme.text }]}>Great Job.</SPText>
+          <SPText style={[wc.subtitle, { color: theme.muted2 }]}>
+            You completed today's workout
+          </SPText>
+
+          {/* Session snapshot — 3 metrics */}
+          <Animated.View style={[wc.metrics, metricsStyle]}>
+            <View style={wc.metricItem}>
+              <Clock size={13} color={accentColor} strokeWidth={1.8} />
+              <SPText style={[wc.metricValue, { color: theme.text }]}>
+                {timeStr}
+              </SPText>
+              <SPText style={[wc.metricLabel, { color: theme.muted }]}>
+                WORKOUT
+              </SPText>
+            </View>
+
+            <View style={[wc.metricSep, { backgroundColor: theme.border }]} />
+
+            <View style={wc.metricItem}>
+              <Check size={13} color={accentColor} strokeWidth={1.8} />
+              <SPText style={[wc.metricValue, { color: theme.text }]}>
+                {displayPct}%
+              </SPText>
+              <SPText style={[wc.metricLabel, { color: theme.muted }]}>
+                DONE
+              </SPText>
+            </View>
+
+            <View style={[wc.metricSep, { backgroundColor: theme.border }]} />
+
+            <View style={wc.metricItem}>
+              <Flame size={13} color={accentColor} strokeWidth={1.8} />
+              <SPText style={[wc.metricValue, { color: theme.text }]}>
+                Day {dayNumber}
+              </SPText>
+              <SPText style={[wc.metricLabel, { color: theme.muted }]}>
+                SESSION
+              </SPText>
+            </View>
+          </Animated.View>
+
+          {/* Divider */}
+          <View style={[wc.divider, { backgroundColor: theme.border }]} />
+
+          {/* Motivational quote */}
+          <SPText style={[wc.quote, { color: theme.muted }]}>{quote}</SPText>
+        </Animated.View>
+
+        {/* CTA + secondary */}
+        <Animated.View style={[wc.ctaWrap, ctaStyle]}>
+          <PressableScale
+            onPress={onContinue}
+            style={[wc.cta, { backgroundColor: accentColor }]}
+          >
+            <SPText style={[wc.ctaText, { color: theme.bg }]}>CONTINUE</SPText>
+          </PressableScale>
+          <Pressable
+            onPress={onViewSummary}
+            hitSlop={12}
+            style={wc.secondaryBtn}
+          >
+            <SPText style={[wc.secondaryText, { color: theme.muted2 }]}>
+              View Session Summary
+            </SPText>
+          </Pressable>
+        </Animated.View>
+      </View>
+    </View>
+  );
 }
 
 // ─── useFlowMode ──────────────────────────────────────────────────────────────
@@ -262,6 +589,7 @@ function ProgressHeader({
   total: number;
   accentColor: string;
 }) {
+  const { theme } = useAppTheme();
   const progress = total > 0 ? current / total : 0;
   const fillWidth = useSharedValue(0);
 
@@ -275,12 +603,12 @@ function ProgressHeader({
 
   return (
     <Animated.View entering={FadeIn.duration(300)} style={s.progressHeader}>
-      <View style={[s.progressTrack, { backgroundColor: darkTheme.border }]}>
+      <View style={[s.progressTrack, { backgroundColor: theme.border }]}>
         <Animated.View
           style={[s.progressFill, fillStyle, { backgroundColor: accentColor }]}
         />
       </View>
-      <SPText style={[s.progressCount, { color: darkTheme.muted2 }]}>
+      <SPText style={[s.progressCount, { color: theme.muted2 }]}>
         {current} / {total}
       </SPText>
     </Animated.View>
@@ -306,6 +634,7 @@ function ExerciseHeader({
   onOpenPip?: () => void;
   rs: (...args: number[]) => number;
 }) {
+  const { theme } = useAppTheme();
   return (
     <Animated.View
       entering={FadeInDown.duration(260).delay(40)}
@@ -319,7 +648,7 @@ function ExerciseHeader({
           <SPText
             style={[
               s.exerciseTitle,
-              { color: darkTheme.text, fontSize: rs(24, 26, 30) },
+              { color: theme.text, fontSize: rs(24, 26, 30) },
             ]}
             numberOfLines={2}
           >
@@ -331,8 +660,8 @@ function ExerciseHeader({
             style={[
               s.exerciseIconBox,
               {
-                backgroundColor: darkTheme.surface2,
-                borderColor: darkTheme.border,
+                backgroundColor: theme.surface2,
+                borderColor: theme.border,
               },
             ]}
           >
@@ -342,7 +671,7 @@ function ExerciseHeader({
               strokeWidth={1.8}
             />
           </View>
-          <SPText style={[s.pipLabel, { color: darkTheme.muted }]}>PIP</SPText>
+          <SPText style={[s.pipLabel, { color: theme.muted }]}>PIP</SPText>
         </PressableScale>
       </View>
 
@@ -384,6 +713,7 @@ function VideoPlayerCard({
   onHideVideo?: () => void;
   rs: (...args: number[]) => number;
 }) {
+  const { theme } = useAppTheme();
   const [playing, setPlaying] = useState(false);
 
   // ── Video's own playback clock — independent of the workout timer ─────────
@@ -525,7 +855,7 @@ function VideoPlayerCard({
                   s.videoTimelineFill,
                   {
                     width: `${videoProgress * 100}%` as `${number}%`,
-                    backgroundColor: darkTheme.accent,
+                    backgroundColor: theme.accent,
                   },
                 ]}
               />
@@ -535,7 +865,7 @@ function VideoPlayerCard({
                   s.videoScrubber,
                   {
                     left: `${videoProgress * 100}%` as `${number}%`,
-                    backgroundColor: darkTheme.accent,
+                    backgroundColor: theme.accent,
                   },
                 ]}
               />
@@ -585,53 +915,42 @@ function VideoHiddenCard({
   onShowVideo?: () => void;
   rs: (...args: number[]) => number;
 }) {
+  const { theme } = useAppTheme();
   return (
     <Animated.View
       entering={FadeInDown.duration(220)}
       style={[
         s.hiddenCard,
-        { backgroundColor: darkTheme.surface, borderColor: darkTheme.border },
+        { backgroundColor: theme.surface, borderColor: theme.border },
       ]}
     >
       <View style={s.hiddenStatsRow}>
         <View style={s.hiddenStatItem}>
           <SPText
-            style={[
-              s.metricValue,
-              { color: darkTheme.text, fontSize: rs(22, 24) },
-            ]}
+            style={[s.metricValue, { color: theme.text, fontSize: rs(22, 24) }]}
           >
             {workoutTime}
           </SPText>
-          <SPText style={[s.metricLabel, { color: darkTheme.muted }]}>
-            TIME
-          </SPText>
+          <SPText style={[s.metricLabel, { color: theme.muted }]}>TIME</SPText>
         </View>
-        <View
-          style={[s.metricDivider, { backgroundColor: darkTheme.border }]}
-        />
+        <View style={[s.metricDivider, { backgroundColor: theme.border }]} />
         <View style={s.hiddenStatItem}>
           <SPText
-            style={[
-              s.metricValue,
-              { color: darkTheme.text, fontSize: rs(22, 24) },
-            ]}
+            style={[s.metricValue, { color: theme.text, fontSize: rs(22, 24) }]}
           >
             {completedSets} / {totalSets}
           </SPText>
-          <SPText style={[s.metricLabel, { color: darkTheme.muted }]}>
-            SETS
-          </SPText>
+          <SPText style={[s.metricLabel, { color: theme.muted }]}>SETS</SPText>
         </View>
       </View>
 
       {nextExerciseName ? (
         <View style={s.hiddenUpNextRow}>
-          <SPText style={[s.upNextLabel, { color: darkTheme.muted2 }]}>
+          <SPText style={[s.upNextLabel, { color: theme.muted2 }]}>
             UP NEXT
           </SPText>
           <SPText
-            style={[s.hiddenUpNextName, { color: darkTheme.text }]}
+            style={[s.hiddenUpNextName, { color: theme.text }]}
             numberOfLines={1}
           >
             {nextExerciseName}
@@ -669,6 +988,7 @@ function PipOverlay({
   onClose: () => void;
   onExpand: () => void;
 }) {
+  const { theme } = useAppTheme();
   if (!visible) return null;
 
   return (
@@ -676,7 +996,7 @@ function PipOverlay({
       entering={FadeIn.duration(200)}
       style={[
         s.pipOverlay,
-        { backgroundColor: darkTheme.raised, borderColor: darkTheme.border },
+        { backgroundColor: theme.raised, borderColor: theme.border },
       ]}
     >
       <Pressable style={StyleSheet.absoluteFillObject} onPress={onExpand}>
@@ -737,6 +1057,7 @@ function FlowModeOverlay({
   onPip: () => void;
   onHideVideo: () => void;
 }) {
+  const { theme } = useAppTheme();
   const insets = useSafeAreaInsets();
 
   // ── Overlay fade ──────────────────────────────────────────────────────────
@@ -808,7 +1129,7 @@ function FlowModeOverlay({
               ]}
             />
           </View>
-          <SPText style={[fm.progressCount, { color: darkTheme.muted2 }]}>
+          <SPText style={[fm.progressCount, { color: "#9A9A90" }]}>
             {current} / {total}
           </SPText>
         </View>
@@ -822,7 +1143,7 @@ function FlowModeOverlay({
             <SPText style={[fm.exerciseMeta, { color: accentColor }]}>
               {level.toUpperCase()} · {focus.toUpperCase()}
             </SPText>
-            <SPText style={[fm.exerciseTitle, { color: darkTheme.text }]}>
+            <SPText style={[fm.exerciseTitle, { color: "#F0EDE4" }]}>
               {exerciseName}
             </SPText>
           </View>
@@ -833,8 +1154,8 @@ function FlowModeOverlay({
               style={[
                 s.exerciseIconBox,
                 {
-                  backgroundColor: darkTheme.surface2,
-                  borderColor: darkTheme.border,
+                  backgroundColor: "rgba(26,31,35,0.85)",
+                  borderColor: "rgba(255,255,255,0.10)",
                 },
               ]}
             >
@@ -844,9 +1165,7 @@ function FlowModeOverlay({
                 strokeWidth={1.8}
               />
             </View>
-            <SPText style={[s.pipLabel, { color: darkTheme.muted }]}>
-              PIP
-            </SPText>
+            <SPText style={[s.pipLabel, { color: "#6B6B62" }]}>PIP</SPText>
           </PressableScale>
         </View>
 
@@ -870,7 +1189,7 @@ function FlowModeOverlay({
           {/* Hide-video button — top right of the video */}
           <PressableScale onPress={onHideVideo} style={fm.eyeBtn}>
             <View style={fm.eyeBtnInner}>
-              <EyeOff size={18} color={darkTheme.muted2} strokeWidth={1.8} />
+              <EyeOff size={18} color="#9A9A90" strokeWidth={1.8} />
             </View>
           </PressableScale>
         </View>
@@ -888,7 +1207,7 @@ function FlowModeOverlay({
             ]}
           >
             <SPText
-              style={[fm.hudLabel, { color: darkTheme.muted2 }]}
+              style={[fm.hudLabel, { color: "#9A9A90" }]}
               numberOfLines={1}
             >
               {exerciseName.toUpperCase()}
@@ -899,7 +1218,7 @@ function FlowModeOverlay({
                 { backgroundColor: "rgba(255,255,255,0.13)" },
               ]}
             />
-            <SPText style={[fm.hudTime, { color: darkTheme.text }]}>
+            <SPText style={[fm.hudTime, { color: "#F0EDE4" }]}>
               {workoutTime}
             </SPText>
             <Animated.View
@@ -909,8 +1228,8 @@ function FlowModeOverlay({
 
           {/* Tap hint */}
           <View style={fm.tapRow}>
-            <Hand size={15} color={darkTheme.muted} strokeWidth={1.5} />
-            <SPText style={[fm.tapHint, { color: darkTheme.muted }]}>
+            <Hand size={15} color="#6B6B62" strokeWidth={1.5} />
+            <SPText style={[fm.tapHint, { color: "#6B6B62" }]}>
               Tap anywhere to show controls
             </SPText>
           </View>
@@ -935,39 +1254,29 @@ function MetricsCard({
   accentColor: string;
   rs: (...args: number[]) => number;
 }) {
+  const { theme } = useAppTheme();
   return (
     <Animated.View entering={FadeInDown.duration(260).delay(80)}>
       <View
         style={[
           s.metricsCard,
-          { backgroundColor: darkTheme.surface, borderColor: darkTheme.border },
+          { backgroundColor: theme.surface, borderColor: theme.border },
         ]}
       >
         {/* REPS */}
         <View style={s.metricItem}>
           <View style={s.metricIconRow}>
-            <Repeat
-              size={rs(14, 16)}
-              color={darkTheme.muted2}
-              strokeWidth={1.8}
-            />
+            <Repeat size={rs(14, 16)} color={theme.muted2} strokeWidth={1.8} />
           </View>
           <SPText
-            style={[
-              s.metricValue,
-              { color: darkTheme.text, fontSize: rs(26, 28) },
-            ]}
+            style={[s.metricValue, { color: theme.text, fontSize: rs(26, 28) }]}
           >
             {totalReps}
           </SPText>
-          <SPText style={[s.metricLabel, { color: darkTheme.muted }]}>
-            REPS
-          </SPText>
+          <SPText style={[s.metricLabel, { color: theme.muted }]}>REPS</SPText>
         </View>
 
-        <View
-          style={[s.metricDivider, { backgroundColor: darkTheme.border }]}
-        />
+        <View style={[s.metricDivider, { backgroundColor: theme.border }]} />
 
         {/* SETS */}
         <View style={s.metricItem}>
@@ -975,16 +1284,11 @@ function MetricsCard({
             <Layers size={rs(14, 16)} color={accentColor} strokeWidth={1.8} />
           </View>
           <SPText
-            style={[
-              s.metricValue,
-              { color: darkTheme.text, fontSize: rs(26, 28) },
-            ]}
+            style={[s.metricValue, { color: theme.text, fontSize: rs(26, 28) }]}
           >
             {completedSets} / {totalSets}
           </SPText>
-          <SPText style={[s.metricLabel, { color: darkTheme.muted }]}>
-            SETS
-          </SPText>
+          <SPText style={[s.metricLabel, { color: theme.muted }]}>SETS</SPText>
         </View>
       </View>
     </Animated.View>
@@ -1006,12 +1310,13 @@ function UpNextCard({
   accentColor: string;
   rs: (...args: number[]) => number;
 }) {
+  const { theme } = useAppTheme();
   return (
     <Animated.View entering={FadeInDown.duration(260).delay(100)}>
       <View
         style={[
           s.upNextCard,
-          { backgroundColor: darkTheme.surface, borderColor: darkTheme.border },
+          { backgroundColor: theme.surface, borderColor: theme.border },
         ]}
       >
         {/* Thumbnail */}
@@ -1022,27 +1327,22 @@ function UpNextCard({
             contentFit="cover"
           />
         ) : (
-          <View
-            style={[s.upNextThumb, { backgroundColor: darkTheme.raised }]}
-          />
+          <View style={[s.upNextThumb, { backgroundColor: theme.raised }]} />
         )}
 
         {/* Info */}
         <View style={s.upNextInfo}>
-          <SPText style={[s.upNextLabel, { color: darkTheme.muted2 }]}>
+          <SPText style={[s.upNextLabel, { color: theme.muted2 }]}>
             UP NEXT
           </SPText>
           <SPText
-            style={[
-              s.upNextName,
-              { color: darkTheme.text, fontSize: rs(17, 19) },
-            ]}
+            style={[s.upNextName, { color: theme.text, fontSize: rs(17, 19) }]}
             numberOfLines={1}
           >
             {exerciseName}
           </SPText>
           {equipment && (
-            <SPText style={[s.upNextEquipment, { color: darkTheme.muted }]}>
+            <SPText style={[s.upNextEquipment, { color: theme.muted }]}>
               {equipment}
             </SPText>
           )}
@@ -1050,7 +1350,7 @@ function UpNextCard({
         </View>
 
         {/* Arrow */}
-        <ChevronRight size={20} color={darkTheme.muted2} strokeWidth={1.8} />
+        <ChevronRight size={20} color={theme.muted2} strokeWidth={1.8} />
       </View>
     </Animated.View>
   );
@@ -1077,6 +1377,7 @@ function ActionControls({
   resting: boolean;
   rs: (...args: number[]) => number;
 }) {
+  const { theme } = useAppTheme();
   const completeIcon =
     phase === "paused" ? (
       <Play size={rs(26, 28)} color="#000" fill="#000" strokeWidth={0} />
@@ -1089,7 +1390,7 @@ function ActionControls({
   return (
     <Animated.View
       entering={FadeInDown.duration(260).delay(140)}
-      style={[s.actionControls, { borderTopColor: darkTheme.border }]}
+      style={[s.actionControls, { borderTopColor: theme.border }]}
     >
       {/* Back */}
       <PressableScale onPress={onBack} style={s.actionSideBtn}>
@@ -1097,20 +1398,14 @@ function ActionControls({
           style={[
             s.actionSecBtn,
             {
-              backgroundColor: darkTheme.surface2,
-              borderColor: darkTheme.border,
+              backgroundColor: theme.surface2,
+              borderColor: theme.border,
             },
           ]}
         >
-          <SkipBack
-            size={rs(18, 20)}
-            color={darkTheme.text}
-            strokeWidth={1.8}
-          />
+          <SkipBack size={rs(18, 20)} color={theme.text} strokeWidth={1.8} />
         </View>
-        <SPText style={[s.actionBtnLabel, { color: darkTheme.muted }]}>
-          BACK
-        </SPText>
+        <SPText style={[s.actionBtnLabel, { color: theme.muted }]}>BACK</SPText>
       </PressableScale>
 
       {/* Complete */}
@@ -1123,7 +1418,7 @@ function ActionControls({
         <SPText
           style={[
             s.actionBtnLabel,
-            { color: darkTheme.text, fontFamily: fonts.brandBold },
+            { color: theme.text, fontFamily: fonts.brandBold },
           ]}
         >
           COMPLETE
@@ -1136,20 +1431,14 @@ function ActionControls({
           style={[
             s.actionSecBtn,
             {
-              backgroundColor: darkTheme.surface2,
-              borderColor: darkTheme.border,
+              backgroundColor: theme.surface2,
+              borderColor: theme.border,
             },
           ]}
         >
-          <SkipForward
-            size={rs(18, 20)}
-            color={darkTheme.text}
-            strokeWidth={1.8}
-          />
+          <SkipForward size={rs(18, 20)} color={theme.text} strokeWidth={1.8} />
         </View>
-        <SPText style={[s.actionBtnLabel, { color: darkTheme.muted }]}>
-          NEXT
-        </SPText>
+        <SPText style={[s.actionBtnLabel, { color: theme.muted }]}>NEXT</SPText>
       </PressableScale>
     </Animated.View>
   );
@@ -1176,12 +1465,13 @@ function WorkoutFooter({
   onEnd: () => void;
   rs: (...args: number[]) => number;
 }) {
+  const { theme } = useAppTheme();
   return (
     <Animated.View
       entering={FadeInDown.duration(260).delay(180)}
       style={[
         s.footer,
-        { borderTopColor: darkTheme.border, backgroundColor: darkTheme.bg },
+        { borderTopColor: theme.border, backgroundColor: theme.bg },
       ]}
     >
       {/* Workout timer */}
@@ -1189,12 +1479,12 @@ function WorkoutFooter({
         <SPText
           style={[
             s.footerTimerValue,
-            { color: darkTheme.text, fontSize: rs(22, 24) },
+            { color: theme.text, fontSize: rs(22, 24) },
           ]}
         >
           {workoutTime}
         </SPText>
-        <SPText style={[s.footerTimerLabel, { color: darkTheme.muted }]}>
+        <SPText style={[s.footerTimerLabel, { color: theme.muted }]}>
           WORKOUT
         </SPText>
       </View>
@@ -1205,21 +1495,17 @@ function WorkoutFooter({
           {phase === "paused" ? (
             <Play
               size={12}
-              color={darkTheme.muted2}
-              fill={darkTheme.muted2}
+              color={theme.muted2}
+              fill={theme.muted2}
               strokeWidth={0}
             />
           ) : (
             <View style={s.pauseIconRow}>
-              <View
-                style={[s.pauseBar, { backgroundColor: darkTheme.muted2 }]}
-              />
-              <View
-                style={[s.pauseBar, { backgroundColor: darkTheme.muted2 }]}
-              />
+              <View style={[s.pauseBar, { backgroundColor: theme.muted2 }]} />
+              <View style={[s.pauseBar, { backgroundColor: theme.muted2 }]} />
             </View>
           )}
-          <SPText style={[s.footerActionLabel, { color: darkTheme.muted2 }]}>
+          <SPText style={[s.footerActionLabel, { color: theme.muted2 }]}>
             {phase === "paused" ? "RESUME" : "PAUSE"}
           </SPText>
         </Pressable>
@@ -1238,14 +1524,14 @@ function WorkoutFooter({
           style={[
             s.footerTimerValue,
             {
-              color: resting ? accentColor : darkTheme.text,
+              color: resting ? accentColor : theme.text,
               fontSize: rs(22, 24),
             },
           ]}
         >
           {restTime}
         </SPText>
-        <SPText style={[s.footerTimerLabel, { color: darkTheme.muted }]}>
+        <SPText style={[s.footerTimerLabel, { color: theme.muted }]}>
           REST
         </SPText>
       </View>
@@ -1271,7 +1557,7 @@ export default function SessionScreen({
   const { rs } = useResponsive();
 
   const levelLabel = formatLevel(level);
-  const accentColor = isDark ? darkTheme.accent : "#5C8A00";
+  const accentColor = theme.accent;
 
   // ─── Exercise navigation ──────────────────────────────────────────────────
 
@@ -1301,9 +1587,16 @@ export default function SessionScreen({
   }, [timer.seconds]);
   const getSeconds = useCallback(() => secondsRef.current, []);
 
+  // ─── Workout completion overlay ───────────────────────────────────────────
+
+  const [showCompletion, setShowCompletion] = useState(false);
+  const completionSecondsRef = useRef(0);
+
   const onSessionEnd = useCallback(() => {
-    router.replace("/(tabs)/training");
-  }, [router]);
+    completionSecondsRef.current = secondsRef.current;
+    setShowCompletion(true);
+    // Timer keeps value frozen — we already have the snapshot in ref
+  }, []);
 
   const session = useSessionState({
     instanceId,
@@ -1406,7 +1699,7 @@ export default function SessionScreen({
     // Outer wrapper — full screen, sits outside SafeAreaView so FlowModeOverlay
     // can cover the entire display including safe-area insets.
     <View
-      style={[s.rootWrap, { backgroundColor: darkTheme.bg }]}
+      style={[s.rootWrap, { backgroundColor: theme.bg }]}
       // Capture-phase touch handler: resets idle timer WITHOUT consuming events.
       // Children still receive and handle their own touches normally.
       onStartShouldSetResponderCapture={() => {
@@ -1415,7 +1708,7 @@ export default function SessionScreen({
       }}
     >
       <SafeAreaView
-        style={[s.safe, { backgroundColor: darkTheme.bg }]}
+        style={[s.safe, { backgroundColor: theme.bg }]}
         edges={["top", "bottom"]}
       >
         <ScrollView
@@ -1547,7 +1840,7 @@ export default function SessionScreen({
           zIndex 90 sits above PipOverlay (zIndex 200 handles PiP separately).
           Tap anywhere to exit; PiP/Hide buttons intercept their own presses. */}
       <FlowModeOverlay
-        visible={isFlowMode && !showSheet}
+        visible={isFlowMode && !showSheet && !showCompletion}
         current={currentExIdx + 1}
         total={total}
         level={levelLabel}
@@ -1567,6 +1860,16 @@ export default function SessionScreen({
           setVideoHidden(true);
           resetFlow();
         }}
+      />
+
+      {/* ── Workout Completion Overlay ──────────────────────────────────────── */}
+      <WorkoutCompleteOverlay
+        visible={showCompletion}
+        workoutSeconds={completionSecondsRef.current}
+        dayNumber={dayNumber}
+        accentColor={accentColor}
+        onContinue={() => router.replace("/(tabs)/training")}
+        onViewSummary={() => router.replace("/(tabs)/progress")}
       />
     </View>
   );
@@ -2012,7 +2315,7 @@ const fm = StyleSheet.create({
   // Full-screen dark overlay
   overlay: {
     zIndex: 90,
-    backgroundColor: darkTheme.bg,
+    backgroundColor: "#0C0E10",
   },
   // Absolute fill that holds the layout — sits on top of the Pressable tap catcher
   overlayContent: {
@@ -2154,6 +2457,162 @@ const fm = StyleSheet.create({
   tapHint: {
     fontSize: 13,
     fontFamily: fonts.brandMedium,
+    letterSpacing: 0.1,
+  },
+});
+
+// ─── Workout Completion Stylesheet ────────────────────────────────────────────
+
+const wc = StyleSheet.create({
+  root: {
+    zIndex: 300,
+    justifyContent: "flex-end",
+  },
+  backdrop: {
+    backgroundColor: "rgba(7,9,10,0.88)",
+  },
+
+  // ── Sheet layout ──
+  sheetWrap: {
+    paddingHorizontal: 16,
+    gap: 14,
+  },
+
+  // ── Reward card ──
+  card: {
+    borderRadius: 36,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.05)",
+    backgroundColor: "#1A1F23",
+    paddingTop: 44,
+    paddingBottom: 36,
+    paddingHorizontal: 28,
+    alignItems: "center",
+    gap: 0,
+    // Very soft shadow
+    shadowColor: "#000",
+    shadowOpacity: 0.55,
+    shadowRadius: 40,
+    shadowOffset: { width: 0, height: 16 },
+    elevation: 24,
+  },
+
+  // ── Success ring ──
+  ringWrap: {
+    width: 112,
+    height: 112,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 28,
+  },
+  glowOuter: {
+    position: "absolute",
+    width: 148,
+    height: 148,
+    borderRadius: 74,
+  },
+  glowInner: {
+    position: "absolute",
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+  },
+  ring: {
+    width: 112,
+    height: 112,
+    borderRadius: 56,
+    borderWidth: 1.5,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  ringFill: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 56,
+  },
+
+  // ── Copy ──
+  title: {
+    fontFamily: "Barlow_700Bold",
+    fontSize: 32,
+    letterSpacing: -0.6,
+    marginBottom: 8,
+    textAlign: "center",
+  },
+  subtitle: {
+    fontFamily: "Barlow_400Regular",
+    fontSize: 15,
+    textAlign: "center",
+    maxWidth: "70%",
+    lineHeight: 22,
+    marginBottom: 32,
+  },
+
+  // ── Metrics ──
+  metrics: {
+    flexDirection: "row",
+    alignItems: "center",
+    width: "100%",
+    marginBottom: 28,
+  },
+  metricItem: {
+    flex: 1,
+    alignItems: "center",
+    gap: 5,
+  },
+  metricValue: {
+    fontFamily: "Barlow_700Bold",
+    fontSize: 26,
+    letterSpacing: -0.5,
+    lineHeight: 30,
+  },
+  metricLabel: {
+    fontFamily: "Barlow_600SemiBold",
+    fontSize: 10,
+    letterSpacing: 1.4,
+  },
+  metricSep: {
+    width: 1,
+    height: 44,
+  },
+
+  // ── Divider + quote ──
+  divider: {
+    width: "100%",
+    height: 1,
+    marginBottom: 20,
+  },
+  quote: {
+    fontFamily: "Barlow_400Regular",
+    fontSize: 14,
+    letterSpacing: 0.2,
+    textAlign: "center",
+    fontStyle: "italic",
+  },
+
+  // ── CTA ──
+  ctaWrap: {
+    width: "100%",
+    alignItems: "center",
+    gap: 16,
+  },
+  cta: {
+    width: "90%",
+    height: 72,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  ctaText: {
+    fontFamily: "Barlow_800ExtraBold",
+    fontSize: 16,
+    letterSpacing: 1.8,
+  },
+  secondaryBtn: {
+    paddingVertical: 4,
+  },
+  secondaryText: {
+    fontFamily: "Barlow_500Medium",
+    fontSize: 14,
     letterSpacing: 0.1,
   },
 });
